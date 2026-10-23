@@ -9,6 +9,7 @@ use BankSystem\BankException;
 use BankSystem\Main;
 use BankSystem\Service\BankService;
 use BankSystem\Support\Money;
+use BankSystem\Support\PlayerIdentity;
 use BankSystem\UI\BankPanelForm;
 use pocketmine\command\CommandSender;
 use pocketmine\player\Player;
@@ -331,20 +332,33 @@ final class BankCommand{
             return;
         }
 
+        // A confirmation must remain bound to the account the player actually saw.
+        // Names can be reused after disconnect; the UUID cannot be silently substituted.
+        $targetName = $target->getName();
+        $targetUuid = $target->getUniqueId()->toString();
+
         $player->sendForm(BankPanelForm::modal(
             'Confirm transfer',
             "§eSend §f" . $this->formatMoney($amountMinor) . " §eto §f" . $target->getName() .
                 "§e?\n\n§cThis transfer cannot be automatically reversed.",
             'Confirm transfer',
             'Cancel',
-            function(Player $formPlayer, bool $confirmed) use ($targetName, $amountInput) : void{
+            function(Player $formPlayer, bool $confirmed) use ($targetName, $targetUuid, $amountInput) : void{
                 if(!$formPlayer->hasPermission('banksystem.use')){
                     $this->message($formPlayer, 'You do not have permission to use banking.');
                     return;
                 }
                 if($confirmed){
-                    // Re-resolve the target and re-validate the amount at confirmation time.
-                    // The transaction handler and SQLite transaction remain authoritative.
+                    $currentTarget = $this->plugin->getServer()->getPlayerExact($targetName);
+                    if($currentTarget === null || !PlayerIdentity::matches(
+                        $targetUuid,
+                        $currentTarget->getUniqueId()->toString()
+                    )){
+                        $this->message($formPlayer, 'The intended recipient is no longer online under the same account. No transfer was made.');
+                        $this->openPanel($formPlayer);
+                        return;
+                    }
+                    // Re-resolve and validate again in the common transaction handler.
                     $this->handlePay($formPlayer, ['pay', $targetName, $amountInput]);
                 }
                 $this->openPanel($formPlayer);
@@ -382,6 +396,10 @@ final class BankCommand{
             return;
         }
 
+        // Preserve the confirmed target identity across the asynchronous form round-trip.
+        $targetName = $target->getName();
+        $targetUuid = $target->getUniqueId()->toString();
+
         $description = match($mode){
             'give' => 'Add ' . $this->formatMoney($amountMinor) . ' to ' . $target->getName() . "'s " . $bucket . ' balance?',
             'take' => 'Remove ' . $this->formatMoney($amountMinor) . ' from ' . $target->getName() . "'s " . $bucket . ' balance?',
@@ -395,14 +413,22 @@ final class BankCommand{
                 "\n\n§7The operation will be written to the bank audit history.",
             'Confirm change',
             'Cancel',
-            function(Player $formPlayer, bool $confirmed) use ($mode, $targetName, $bucket, $amountInput) : void{
+            function(Player $formPlayer, bool $confirmed) use ($mode, $targetName, $targetUuid, $bucket, $amountInput) : void{
                 if(!$formPlayer->hasPermission('banksystem.use') || !$formPlayer->hasPermission('banksystem.admin')){
                     $this->message($formPlayer, 'Administrator permission is required.');
                     return;
                 }
                 if($confirmed){
-                    // handleAdmin re-resolves the exact online target and executes all
-                    // normal amount, audit, and cooldown checks.
+                    $currentTarget = $this->plugin->getServer()->getPlayerExact($targetName);
+                    if($currentTarget === null || !PlayerIdentity::matches(
+                        $targetUuid,
+                        $currentTarget->getUniqueId()->toString()
+                    )){
+                        $this->message($formPlayer, 'The intended target is no longer online under the same account. No balance change was made.');
+                        $this->openPanel($formPlayer);
+                        return;
+                    }
+                    // handleAdmin still executes amount, audit, permission and cooldown checks.
                     $this->handleAdmin($formPlayer, [$mode, $targetName, $bucket, $amountInput]);
                 }
                 $this->openPanel($formPlayer);
