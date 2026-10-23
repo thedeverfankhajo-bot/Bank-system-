@@ -10,6 +10,7 @@ use BankSystem\Main;
 use BankSystem\Service\BankService;
 use BankSystem\Support\Money;
 use BankSystem\Support\PlayerIdentity;
+use BankSystem\UI\BankHistoryPage;
 use BankSystem\UI\BankPanelForm;
 use pocketmine\command\CommandSender;
 use pocketmine\player\Player;
@@ -93,23 +94,29 @@ final class BankCommand{
         try{
             $account = $this->service->getAccount($player->getUniqueId()->toString(), $player->getName());
             $buttons = [
-                ['text' => 'Deposit to bank', 'action' => 'deposit'],
-                ['text' => 'Withdraw to wallet', 'action' => 'withdraw'],
-                ['text' => 'Send money to player', 'action' => 'pay'],
-                ['text' => 'Transaction history', 'action' => 'history'],
-                ['text' => 'Top 10 bank accounts', 'action' => 'top']
+                ['text' => '§a[1] §fDeposit to bank', 'action' => 'deposit'],
+                ['text' => '§e[2] §fWithdraw to wallet', 'action' => 'withdraw'],
+                ['text' => '§b[3] §fSend money to player', 'action' => 'pay'],
+                ['text' => '§6[4] §fTransaction history', 'action' => 'history'],
+                ['text' => '§d[5] §fBank leaderboard', 'action' => 'top']
             ];
             if($player->hasPermission('banksystem.admin')){
-                $buttons[] = ['text' => 'Administrator tools', 'action' => 'admin'];
+                $buttons[] = ['text' => '§c[+] §fAdministrator tools', 'action' => 'admin'];
             }
 
-            $content = "§7Wallet: §f" . $this->formatMoney($account->walletBalance) .
-                "\n§7Bank: §f" . $this->formatMoney($account->bankBalance) .
-                "\n§7Total: §f" . $this->formatMoney($account->totalBalance()) .
-                "\n\n§8Select an action below.";
+            $content = "§8==============================\n" .
+                "§6§lACCOUNT OVERVIEW\n" .
+                "§8==============================\n\n" .
+                "§7WALLET BALANCE\n§f" . $this->formatMoney($account->walletBalance) . "\n\n" .
+                "§7BANK SAVINGS\n§a" . $this->formatMoney($account->bankBalance) . "\n\n" .
+                "§8------------------------------\n" .
+                "§7TOTAL FUNDS  §f§l" . $this->formatMoney($account->totalBalance()) . "\n" .
+                "§8------------------------------\n\n" .
+                "§7Choose a service below.\n" .
+                "§8Your account is linked to your player UUID.";
 
             $player->sendForm(BankPanelForm::simple(
-                '§l§6BankSystem',
+                '§l§6BANKSYSTEM §8• §fBANKING',
                 $content,
                 $buttons,
                 function(Player $formPlayer, string $action) : void{
@@ -128,6 +135,11 @@ final class BankCommand{
             return;
         }
 
+        if(preg_match('/^history_page_([0-9]+)$/D', $page, $matches) === 1){
+            $this->openHistoryPanel($player, BankHistoryPage::clampPage((int) $matches[1]));
+            return;
+        }
+
         switch($page){
             case 'menu':
                 $this->openPanel($player);
@@ -140,7 +152,7 @@ final class BankCommand{
                 return;
             case 'pay':
                 $player->sendForm(BankPanelForm::custom(
-                    'Send money',
+                    '§l§6BANKSYSTEM §8• §fTRANSFER',
                     [
                         ['type' => 'input', 'text' => 'Exact online player name', 'placeholder' => 'PlayerName', 'default' => ''],
                         ['type' => 'input', 'text' => 'Amount', 'placeholder' => '10.00', 'default' => '']
@@ -151,7 +163,7 @@ final class BankCommand{
                 ));
                 return;
             case 'history':
-                $this->openHistoryPanel($player);
+                $this->openHistoryPanel($player, 1);
                 return;
             case 'top':
                 $this->openLeaderboardPanel($player);
@@ -166,10 +178,14 @@ final class BankCommand{
     }
 
     private function showAmountPanel(Player $player, string $action, string $title, string $description) : void{
+        $formTitle = $action === 'deposit'
+            ? '§l§6BANKSYSTEM §8• §fDEPOSIT'
+            : '§l§6BANKSYSTEM §8• §fWITHDRAW';
+
         $player->sendForm(BankPanelForm::custom(
-            $title,
+            $formTitle,
             [
-                ['type' => 'label', 'text' => $description],
+                ['type' => 'label', 'text' => "§6BANKSYSTEM\n§7" . $description],
                 ['type' => 'input', 'text' => 'Amount (up to 2 decimal places)', 'placeholder' => '10.00', 'default' => '']
             ],
             function(Player $formPlayer, mixed $data) use ($action) : void{
@@ -178,50 +194,105 @@ final class BankCommand{
         ));
     }
 
-    private function openHistoryPanel(Player $player) : void{
+    private function openHistoryPanel(Player $player, int $page = 1) : void{
         try{
             $perPage = (int) $this->plugin->getConfig()->getNested('history.entries-per-page', 10);
             $perPage = max(1, min(20, $perPage));
-            $rows = $this->service->getHistory($player->getUniqueId()->toString(), $perPage, 0);
-            $content = $rows === [] ? '§7No transactions have been recorded yet.' : '§7Your latest transactions:';
-            foreach($rows as $row){
-                $content .= "\n\n§e#" . (int) $row['id'] . ' §f' .
-                    strtoupper((string) $row['action']) . ' §a' .
+            $page = BankHistoryPage::clampPage($page);
+            // Fetch one extra row to determine whether a forward page exists.
+            $rows = $this->service->getHistory(
+                $player->getUniqueId()->toString(),
+                $perPage + 1,
+                ($page - 1) * $perPage
+            );
+            $historyPage = BankHistoryPage::fromRows($page, $perPage, $rows);
+            $entries = $historyPage->entries;
+
+            $content = $entries === []
+                ? ($page === 1 ? '§7No transactions have been recorded yet.' : '§7There are no transactions on this page.')
+                : "§7Recent account activity\n§8Page " . $historyPage->page . "\n§8------------------------------";
+
+            foreach($entries as $row){
+                $action = (string) $row['action'];
+                $actionColor = match($action){
+                    'deposit' => '§a',
+                    'withdraw' => '§c',
+                    'pay' => '§b',
+                    default => str_starts_with($action, 'admin_') ? '§d' : '§e'
+                };
+                $content .= "\n\n§8#" . (int) $row['id'] . ' ' .
+                    $actionColor . strtoupper($action) . ' §f' .
                     $this->formatMoney((int) $row['amount_minor']) .
-                    "\n§7" . (string) $row['from_name'] . ' -> ' . (string) $row['to_name'] .
+                    "\n§7" . (string) $row['from_name'] . ' §8> §7' . (string) $row['to_name'] .
                     "\n§8" . date('Y-m-d H:i', (int) $row['created_at']);
             }
-            $this->showPanelInformation($player, 'Transaction history', $content);
+
+            $buttons = [];
+            if($historyPage->hasPrevious){
+                $buttons[] = ['text' => '§e< §fPrevious page', 'action' => 'history_page_' . ($historyPage->page - 1)];
+            }
+            if($historyPage->hasNext){
+                $buttons[] = ['text' => '§a> §fNext page', 'action' => 'history_page_' . ($historyPage->page + 1)];
+            }
+            $buttons[] = ['text' => '§6[0] §fBack to BankSystem', 'action' => 'menu'];
+
+            $this->showPanelInformation(
+                $player,
+                '§l§6BANKSYSTEM §8• §fHISTORY §7(' . $historyPage->page . ')',
+                $content,
+                $buttons
+            );
         }catch(Throwable $exception){
             $this->logReadError('panel history', $exception);
-            $this->showPanelInformation($player, 'Transaction history', '§cCould not load transaction history. Check the server log.');
+            $this->showPanelInformation(
+                $player,
+                '§l§6BANKSYSTEM §8• §fHISTORY',
+                '§cCould not load transaction history. Check the server log.'
+            );
         }
     }
 
     private function openLeaderboardPanel(Player $player) : void{
         try{
             $accounts = $this->service->getTopAccounts(10);
-            $content = $accounts === [] ? '§7No bank accounts have been created yet.' : '§7Top 10 bank balances:';
+            $content = $accounts === []
+                ? '§7No bank accounts have been created yet.'
+                : "§7Ranked by bank savings\n§8------------------------------";
             foreach($accounts as $index => $account){
-                $content .= "\n\n§e#" . ($index + 1) . ' §f' . $account->playerName .
-                    "\n§7Bank: §a" . $this->formatMoney($account->bankBalance);
+                $rankColor = match($index){
+                    0 => '§6§l',
+                    1 => '§f§l',
+                    2 => '§c§l',
+                    default => '§e'
+                };
+                $content .= "\n\n" . $rankColor . '#' . ($index + 1) . ' §f' . $account->playerName .
+                    "\n§7BANK SAVINGS  §a" . $this->formatMoney($account->bankBalance);
             }
-            $this->showPanelInformation($player, 'Bank leaderboard', $content);
+            $this->showPanelInformation(
+                $player,
+                '§l§6BANKSYSTEM §8• §fLEADERBOARD',
+                $content
+            );
         }catch(Throwable $exception){
             $this->logReadError('panel leaderboard', $exception);
             $this->showPanelInformation($player, 'Bank leaderboard', '§cCould not load the leaderboard. Check the server log.');
         }
     }
 
-    private function showPanelInformation(Player $player, string $title, string $content) : void{
+    /**
+     * @param list<array{text: string, action: string}> $buttons
+     */
+    private function showPanelInformation(Player $player, string $title, string $content, array $buttons = []) : void{
+        if($buttons === []){
+            $buttons = [['text' => '§6[0] §fBack to BankSystem', 'action' => 'menu']];
+        }
+
         $player->sendForm(BankPanelForm::simple(
             $title,
             $content,
-            [['text' => 'Back to BankSystem', 'action' => 'menu']],
+            $buttons,
             function(Player $formPlayer, string $action) : void{
-                if($action === 'menu'){
-                    $this->openPanel($formPlayer);
-                }
+                $this->openPanelPage($formPlayer, $action);
             }
         ));
     }
@@ -235,7 +306,7 @@ final class BankCommand{
         }
 
         $player->sendForm(BankPanelForm::custom(
-            'Administrator tools',
+            '§l§6BANKSYSTEM §8• §fADMIN',
             [
                 ['type' => 'dropdown', 'text' => 'Action', 'options' => ['Give', 'Take', 'Set balance'], 'default' => 0],
                 ['type' => 'input', 'text' => 'Exact online player name', 'placeholder' => 'PlayerName', 'default' => ''],
@@ -338,7 +409,7 @@ final class BankCommand{
         $targetUuid = $target->getUniqueId()->toString();
 
         $player->sendForm(BankPanelForm::modal(
-            'Confirm transfer',
+            '§l§6BANKSYSTEM §8• §fCONFIRM TRANSFER',
             "§eSend §f" . $this->formatMoney($amountMinor) . " §eto §f" . $target->getName() .
                 "§e?\n\n§cThis transfer cannot be automatically reversed.",
             'Confirm transfer',
@@ -408,7 +479,7 @@ final class BankCommand{
         };
 
         $player->sendForm(BankPanelForm::modal(
-            'Confirm administrator action',
+            '§l§cBANKSYSTEM §8• §fCONFIRM ADMIN ACTION',
             "§cReview this privileged balance change:\n\n§f" . $description .
                 "\n\n§7The operation will be written to the bank audit history.",
             'Confirm change',
