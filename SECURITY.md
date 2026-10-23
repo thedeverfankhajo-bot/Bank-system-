@@ -8,8 +8,8 @@ Please use GitHub's private vulnerability reporting feature for this repository 
 
 Include the affected version, impact, and reproducible steps where safe. Do not upload database files containing real player data.
 
-## Automated CodeQL analysis
-The CodeQL workflow analyzes PHP and GitHub Actions workflows on pushes and pull requests targeting `main`, on a weekly schedule, and when manually dispatched. SARIF results are retained as a workflow artifact for 14 days.
+## Automated security checks
+The CodeQL workflow analyzes GitHub Actions workflow files on pushes and pull requests targeting `main`, on a weekly schedule, and when manually dispatched. CodeQL does not support PHP, so the PHP plugin code continues to be checked by the CI unit/SQLite tests, PHP syntax lint, and Composer dependency audit. SARIF results from CodeQL are retained as a workflow artifact for 14 days.
 
 This repository is currently private. GitHub requires GitHub Code Security to be enabled for code-scanning alerts in private repositories. Until that entitlement is enabled, the workflow does not upload SARIF to GitHub Code Scanning. After enabling Code Security, set the repository Actions variable `CODEQL_UPLOAD_RESULTS` to the string `true` to publish results to the Security tab. See [GitHub's private repository enablement guidance](https://docs.github.com/en/code-security/reference/code-scanning/troubleshoot-analysis-errors/private-repository-enablement).
 
