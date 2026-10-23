@@ -1,0 +1,20 @@
+currency:
+  # Displayed before all amounts.
+  symbol: "$"
+
+balances:
+  # Applied only when a player's account is first created. Keep these quoted.
+  initial-wallet: "0.00"
+  initial-bank: "0.00"
+
+limits:
+  # Maximum amount accepted by a single deposit, withdrawal, transfer, give, or take.
+  max-transaction: "1000000.00"
+
+security:
+  # Cooldown between successful money-changing commands. Set to 0 to disable.
+  transaction-cooldown-seconds: 1
+
+history:
+  # Number of entries displayed per page.
+  entries-per-page: 10

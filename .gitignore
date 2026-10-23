@@ -1,0 +1,6 @@
+/vendor/
+/.phpunit.cache/
+/*.phar
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal

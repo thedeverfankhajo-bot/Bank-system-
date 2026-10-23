@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: PHP checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: sqlite3
+          coverage: none
+
+      - name: Validate Composer manifest
+        run: composer validate --strict
+
+      - name: Install development dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run unit and SQLite tests
+        run: composer test
+
+      - name: Lint PHP files
+        run: composer lint
+
+      - name: Validate YAML files
+        run: ruby -e 'require "yaml"; ARGV.each { |file| YAML.load_file(file, aliases: true); puts "#{file}: OK" }' plugin.yml resources/config.yml .github/workflows/ci.yml

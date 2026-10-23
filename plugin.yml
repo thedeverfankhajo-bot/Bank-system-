@@ -1,0 +1,20 @@
+name: BankSystem
+main: BankSystem\Main
+version: 1.0.0
+api: [5.0.0]
+author: thedeverfankhajo-bot
+description: SQLite-backed wallet and banking system for PocketMine-MP API 5
+website: https://github.com/thedeverfankhajo-bot/Bank-system-
+commands:
+  bank:
+    description: Access your bank account
+    usage: "/bank [balance|deposit|withdraw|pay|top|history|admin]"
+    aliases: [banking]
+    permission: banksystem.use
+permissions:
+  banksystem.use:
+    description: Allows use of player banking commands
+    default: true
+  banksystem.admin:
+    description: Allows administration of bank balances
+    default: op
