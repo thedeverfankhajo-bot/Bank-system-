@@ -1,0 +1,37 @@
+# BankSystem API
+
+BankSystem exposes its service through the main plugin class. API calls use integer minor units rather than floats: with two decimal places, 1250 means 12.50.
+
+## Obtaining the service
+
+    $plugin = $this->getServer()->getPluginManager()->getPlugin("BankSystem");
+    if(!$plugin instanceof \BankSystem\Main){
+        return;
+    }
+    $bank = $plugin->getBankService();
+    $account = $bank->getAccount($player->getUniqueId()->toString(), $player->getName());
+
+## Public operations
+
+- getAccount(string $uuid, string $playerName): BankAccount
+- deposit(string $uuid, string $playerName, int $amountMinor): void
+- withdraw(string $uuid, string $playerName, int $amountMinor): void
+- transfer(string $fromUuid, string $fromName, string $toUuid, string $toName, int $amountMinor): void
+- give(string $targetUuid, string $targetName, string $bucket, int $amountMinor, string $actorUuid, string $actorName): void
+- take(string $targetUuid, string $targetName, string $bucket, int $amountMinor, string $actorUuid, string $actorName): void
+- setBalance(string $targetUuid, string $targetName, string $bucket, int $amountMinor, string $actorUuid, string $actorName): void
+- getTopAccounts(int $limit = 10): list of BankAccount
+- getHistory(string $uuid, int $limit = 10, int $offset = 0): list of transaction records
+
+The bucket value must be wallet or bank. API callers should catch BankException for expected rule failures, such as insufficient funds, invalid balances, self-payments, and amounts above the configured transaction cap. Database/runtime failures should be handled separately and must not be treated as successful payments.
+
+## Transaction event
+
+A successful database mutation dispatches BankTransactionEvent after the SQLite transaction has committed. The event exposes transaction ID, actor, source and destination UUIDs, action, amount, bucket names, balance-before/after values, and creation time. It is informational and cannot cancel an already committed transaction.
+
+## Integration guidance
+
+- Use the player's UUID as the account key; player names may change.
+- Keep API calls on PocketMine's main thread unless the plugin has independently designed a safe asynchronous boundary.
+- Do not directly edit the SQLite database while the server is running.
+- Do not assume a transaction failed just because an unrelated listener logs an error; BankSystem catches listener exceptions after commit and records them in the server log.

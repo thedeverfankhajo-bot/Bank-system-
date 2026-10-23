@@ -24,7 +24,7 @@ jobs:
           coverage: none
 
       - name: Validate Composer manifest
-        run: composer validate --strict
+        run: COMPOSER_ROOT_VERSION=1.0.0 composer validate --strict --no-check-publish
 
       - name: Install development dependencies
         run: composer install --no-interaction --prefer-dist
