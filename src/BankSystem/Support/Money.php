@@ -37,11 +37,13 @@ final class Money{
         return $minor;
     }
 
-    public static function format(int $minor, string $symbol = '$') : string{
+    public static function format(int $minor, string $symbol = '
+}
+) : string{
+        // Divide before taking the absolute value so PHP_INT_MIN is handled without integer overflow.
         $negative = $minor < 0;
-        $absolute = abs($minor);
-        $whole = intdiv($absolute, 100);
-        $fraction = $absolute % 100;
+        $whole = abs(intdiv($minor, 100));
+        $fraction = abs($minor % 100);
 
         return ($negative ? '-' : '') . $symbol . number_format($whole, 0, '.', ',') . '.' . str_pad((string) $fraction, 2, '0', STR_PAD_LEFT);
     }

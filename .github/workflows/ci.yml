@@ -12,6 +12,10 @@ jobs:
   test:
     name: PHP checks
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.1', '8.2', '8.3']
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -19,15 +23,18 @@ jobs:
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: ${{ matrix.php-version }}
           extensions: sqlite3
           coverage: none
 
       - name: Validate Composer manifest
-        run: COMPOSER_ROOT_VERSION=1.0.0 composer validate --strict --no-check-publish
+        run: COMPOSER_ROOT_VERSION=1.0.0 composer validate --strict --no-check-publish --no-check-all
 
       - name: Install development dependencies
         run: composer install --no-interaction --prefer-dist
+
+      - name: Audit resolved dependencies
+        run: composer audit
 
       - name: Run unit and SQLite tests
         run: composer test
@@ -36,4 +43,5 @@ jobs:
         run: composer lint
 
       - name: Validate YAML files
-        run: ruby -e 'require "yaml"; ARGV.each { |file| YAML.load_file(file, aliases: true); puts "#{file}: OK" }' plugin.yml resources/config.yml .github/workflows/ci.yml
+        run: |
+          ruby -e 'require "yaml"; ARGV.each { |file| YAML.load_file(file, aliases: true); puts "#{file}: OK" }' plugin.yml resources/config.yml .github/workflows/ci.yml .github/dependabot.yml

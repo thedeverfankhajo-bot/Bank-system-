@@ -33,4 +33,16 @@ final class MoneyTest extends TestCase{
         self::assertSame('€0.09', Money::format(9, '€'));
         self::assertSame('-$1.25', Money::format(-125));
     }
+
+    public function testFormatsMinimumIntegerWithoutOverflow() : void{
+        self::assertSame('-$92,233,720,368,547,758.08', Money::format(PHP_INT_MIN));
+    }
+
+    public function testParsesMaximumSupportedMinorUnitExactly() : void{
+        $whole = intdiv(PHP_INT_MAX, 100);
+        $fraction = PHP_INT_MAX % 100;
+        $input = $whole . '.' . str_pad((string) $fraction, 2, '0', STR_PAD_LEFT);
+
+        self::assertSame(PHP_INT_MAX, Money::parse($input));
+    }
 }

@@ -23,7 +23,7 @@ final class BankRepository{
             $this->database->enableExceptions(true);
             $this->database->busyTimeout(5000);
             $this->database->exec('PRAGMA journal_mode = WAL');
-            $this->database->exec('PRAGMA synchronous = NORMAL');
+            $this->database->exec('PRAGMA synchronous = FULL');
             $this->database->exec('PRAGMA foreign_keys = ON');
             $this->migrate();
         }catch(Throwable $exception){
@@ -84,7 +84,7 @@ final class BankRepository{
         $this->execute(
             'INSERT INTO bank_accounts (uuid, player_name, wallet_balance, bank_balance, created_at, updated_at)
              VALUES (:uuid, :player_name, :wallet, :bank, :created_at, :updated_at)
-             ON CONFLICT(uuid) DO UPDATE SET player_name = excluded.player_name, updated_at = excluded.updated_at',
+             ON CONFLICT(uuid) DO UPDATE SET player_name = excluded.player_name WHERE bank_accounts.player_name <> excluded.player_name',
             [
                 ':uuid' => $uuid,
                 ':player_name' => $playerName,
