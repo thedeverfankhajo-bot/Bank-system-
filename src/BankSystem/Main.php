@@ -11,6 +11,7 @@ use pocketmine\command\Command;
 use pocketmine\command\CommandSender;
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerJoinEvent;
+use pocketmine\event\player\PlayerQuitEvent;
 use pocketmine\plugin\PluginBase;
 use Throwable;
 
@@ -65,6 +66,12 @@ final class Main extends PluginBase implements Listener{
             $this->bankService->getAccount($player->getUniqueId()->toString(), $player->getName());
         }catch(Throwable $exception){
             $this->getLogger()->error('Failed to prepare a bank account for ' . $player->getName() . ': ' . $exception->getMessage());
+        }
+    }
+
+    public function onPlayerQuit(PlayerQuitEvent $event) : void{
+        if(isset($this->bankCommand)){
+            $this->bankCommand->forgetPlayer($event->getPlayer()->getUniqueId()->toString());
         }
     }
 

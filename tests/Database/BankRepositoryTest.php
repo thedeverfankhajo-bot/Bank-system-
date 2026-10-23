@@ -65,6 +65,37 @@ final class BankRepositoryTest extends TestCase{
         self::assertCount(0, $this->repository->getHistory('player-a', 10, 0));
     }
 
+    public function testLedgerInsertFailureRollsBackBalanceChanges() : void{
+        $property = new \ReflectionProperty(BankRepository::class, 'database');
+        $database = $property->getValue($this->repository);
+        self::assertInstanceOf(\SQLite3::class, $database);
+
+        // Force the audit insert to fail after both balance updates have executed.
+        // The repository must roll back the entire operation, not leave money partially moved.
+        $database->exec("CREATE TRIGGER force_ledger_failure BEFORE INSERT ON bank_transactions BEGIN SELECT RAISE(ABORT, 'forced ledger failure'); END");
+
+        try{
+            $this->repository->move(
+                'player-a', 'Alex',
+                'player-a', 'Alex',
+                'player-b', 'Blake',
+                'pay', 2500, 'wallet', 'wallet'
+            );
+            self::fail('Expected the audit ledger insert to fail.');
+        }catch(\SQLite3Exception $exception){
+            self::assertStringContainsString('forced ledger failure', $exception->getMessage());
+        }
+
+        $source = $this->repository->getAccount('player-a');
+        $target = $this->repository->getAccount('player-b');
+        self::assertNotNull($source);
+        self::assertNotNull($target);
+        self::assertSame(10000, $source->walletBalance);
+        self::assertSame(0, $target->walletBalance);
+        self::assertCount(0, $this->repository->getHistory('player-a', 10, 0));
+        self::assertCount(0, $this->repository->getHistory('player-b', 10, 0));
+    }
+
     public function testAdminAdjustmentIsRecorded() : void{
         $record = $this->repository->adjustBalance(
             'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 500

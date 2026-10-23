@@ -10,6 +10,7 @@ use BankSystem\Main;
 use BankSystem\Service\BankService;
 use BankSystem\Support\Money;
 use BankSystem\Support\PlayerIdentity;
+use BankSystem\Support\TransactionCooldown;
 use BankSystem\UI\BankHistoryPage;
 use BankSystem\UI\BankPanelForm;
 use pocketmine\command\CommandSender;
@@ -17,13 +18,20 @@ use pocketmine\player\Player;
 use Throwable;
 
 final class BankCommand{
-    /** @var array<string, float> */
-    private array $lastTransactionAt = [];
+    private TransactionCooldown $transactionCooldown;
 
     public function __construct(
         private readonly Main $plugin,
         private readonly BankService $service
     ){
+        $this->transactionCooldown = new TransactionCooldown();
+    }
+
+    /**
+     * Clears per-player cooldown state when that player disconnects.
+     */
+    public function forgetPlayer(string $uuid) : void{
+        $this->transactionCooldown->forget($uuid);
     }
 
     /**
@@ -98,7 +106,8 @@ final class BankCommand{
                 ['text' => '§e[2] §fWithdraw to wallet', 'action' => 'withdraw'],
                 ['text' => '§b[3] §fSend money to player', 'action' => 'pay'],
                 ['text' => '§6[4] §fTransaction history', 'action' => 'history'],
-                ['text' => '§d[5] §fBank leaderboard', 'action' => 'top']
+                ['text' => '§d[5] §fBank leaderboard', 'action' => 'top'],
+                ['text' => '§b↻ §fRefresh balances', 'action' => 'refresh']
             ];
             if($player->hasPermission('banksystem.admin')){
                 $buttons[] = ['text' => '§c[+] §fAdministrator tools', 'action' => 'admin'];
@@ -142,6 +151,7 @@ final class BankCommand{
 
         switch($page){
             case 'menu':
+            case 'refresh':
                 $this->openPanel($player);
                 return;
             case 'deposit':
@@ -780,19 +790,21 @@ final class BankCommand{
 
     private function runTransaction(CommandSender $sender, callable $operation) : void{
         $playerUuid = $sender instanceof Player ? $sender->getUniqueId()->toString() : null;
-        $cooldown = (int) $this->plugin->getConfig()->getNested('security.transaction-cooldown-seconds', 1);
+        $cooldown = max(0, (int) $this->plugin->getConfig()->getNested('security.transaction-cooldown-seconds', 1));
+        $now = microtime(true);
         if($playerUuid !== null && $cooldown > 0){
-            $last = $this->lastTransactionAt[$playerUuid] ?? 0.0;
-            if(microtime(true) - $last < $cooldown){
+            if($this->transactionCooldown->isActive($playerUuid, $now, $cooldown)){
                 $this->message($sender, 'Please wait before making another transaction.');
                 return;
             }
+        }elseif($playerUuid !== null){
+            $this->transactionCooldown->forget($playerUuid);
         }
 
         try{
             $operation();
             if($playerUuid !== null && $cooldown > 0){
-                $this->lastTransactionAt[$playerUuid] = microtime(true);
+                $this->transactionCooldown->recordSuccess($playerUuid, microtime(true));
             }
         }catch(BankException $exception){
             $this->message($sender, $exception->getMessage());
