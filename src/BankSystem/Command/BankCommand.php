@@ -84,6 +84,11 @@ final class BankCommand{
      * remain consistent between both entry points.
      */
     public function openPanel(Player $player) : void{
+        if(!$player->hasPermission('banksystem.use')){
+            $this->message($player, 'You do not have permission to use banking.');
+            return;
+        }
+
         try{
             $account = $this->service->getAccount($player->getUniqueId()->toString(), $player->getName());
             $buttons = [
@@ -117,6 +122,11 @@ final class BankCommand{
     }
 
     private function openPanelPage(Player $player, string $page) : void{
+        if(!$player->hasPermission('banksystem.use')){
+            $this->message($player, 'You do not have permission to use banking.');
+            return;
+        }
+
         switch($page){
             case 'menu':
                 $this->openPanel($player);
@@ -238,6 +248,12 @@ final class BankCommand{
     }
 
     private function handlePanelSubmission(Player $player, string $action, mixed $data) : void{
+        // Permissions may change while a form is open; re-check on every submission.
+        if(!$player->hasPermission('banksystem.use')){
+            $this->message($player, 'You do not have permission to use banking.');
+            return;
+        }
+
         if(!is_array($data)){
             $this->message($player, 'The form response was invalid. Please try again.');
             $this->openPanel($player);
@@ -267,8 +283,7 @@ final class BankCommand{
                 $this->openPanel($player);
                 return;
             }
-            $this->handlePay($player, ['pay', trim($targetName), $amount]);
-            $this->openPanel($player);
+            $this->showTransferConfirmation($player, trim($targetName), $amount);
             return;
         }
 
@@ -292,9 +307,107 @@ final class BankCommand{
 
             $mode = ['give', 'take', 'set'][$modeIndex];
             $bucket = ['wallet', 'bank'][$bucketIndex];
-            $this->handleAdmin($player, [$mode, trim($targetName), $bucket, $amount]);
-            $this->openPanel($player);
+            $this->showAdminConfirmation($player, $mode, trim($targetName), $bucket, $amount);
         }
+    }
+
+    private function showTransferConfirmation(Player $player, string $targetName, string $amountInput) : void{
+        $amountMinor = Money::parse($amountInput);
+        if($amountMinor === null){
+            $this->message($player, 'Invalid amount. Use a positive number with at most two decimal places.');
+            $this->openPanel($player);
+            return;
+        }
+
+        $target = $this->plugin->getServer()->getPlayerExact($targetName);
+        if($target === null){
+            $this->message($player, 'Player ' . $targetName . ' is no longer online.');
+            $this->openPanel($player);
+            return;
+        }
+        if($target->getUniqueId()->toString() === $player->getUniqueId()->toString()){
+            $this->message($player, 'You cannot pay yourself.');
+            $this->openPanel($player);
+            return;
+        }
+
+        $player->sendForm(BankPanelForm::modal(
+            'Confirm transfer',
+            "§eSend §f" . $this->formatMoney($amountMinor) . " §eto §f" . $target->getName() .
+                "§e?\n\n§cThis transfer cannot be automatically reversed.",
+            'Confirm transfer',
+            'Cancel',
+            function(Player $formPlayer, bool $confirmed) use ($targetName, $amountInput) : void{
+                if(!$formPlayer->hasPermission('banksystem.use')){
+                    $this->message($formPlayer, 'You do not have permission to use banking.');
+                    return;
+                }
+                if($confirmed){
+                    // Re-resolve the target and re-validate the amount at confirmation time.
+                    // The transaction handler and SQLite transaction remain authoritative.
+                    $this->handlePay($formPlayer, ['pay', $targetName, $amountInput]);
+                }
+                $this->openPanel($formPlayer);
+            }
+        ));
+    }
+
+    private function showAdminConfirmation(
+        Player $player,
+        string $mode,
+        string $targetName,
+        string $bucket,
+        string $amountInput
+    ) : void{
+        if(!$player->hasPermission('banksystem.admin')){
+            $this->message($player, 'You do not have permission to administer bank balances.');
+            $this->openPanel($player);
+            return;
+        }
+
+        $allowZero = $mode === 'set';
+        $amountMinor = Money::parse($amountInput, $allowZero);
+        if($amountMinor === null){
+            $this->message($player, $allowZero
+                ? 'Invalid amount. Use 0 or a non-negative number with at most two decimal places.'
+                : 'Invalid amount. Use a positive number with at most two decimal places.');
+            $this->openPanel($player);
+            return;
+        }
+
+        $target = $this->plugin->getServer()->getPlayerExact($targetName);
+        if($target === null){
+            $this->message($player, 'Player ' . $targetName . ' is no longer online.');
+            $this->openPanel($player);
+            return;
+        }
+
+        $description = match($mode){
+            'give' => 'Add ' . $this->formatMoney($amountMinor) . ' to ' . $target->getName() . "'s " . $bucket . ' balance?',
+            'take' => 'Remove ' . $this->formatMoney($amountMinor) . ' from ' . $target->getName() . "'s " . $bucket . ' balance?',
+            'set' => 'Set ' . $target->getName() . "'s " . $bucket . ' balance to ' . $this->formatMoney($amountMinor) . '?',
+            default => throw new \LogicException('Unsupported administrator panel action.')
+        };
+
+        $player->sendForm(BankPanelForm::modal(
+            'Confirm administrator action',
+            "§cReview this privileged balance change:\n\n§f" . $description .
+                "\n\n§7The operation will be written to the bank audit history.",
+            'Confirm change',
+            'Cancel',
+            function(Player $formPlayer, bool $confirmed) use ($mode, $targetName, $bucket, $amountInput) : void{
+                if(!$formPlayer->hasPermission('banksystem.use') || !$formPlayer->hasPermission('banksystem.admin')){
+                    $this->message($formPlayer, 'Administrator permission is required.');
+                    return;
+                }
+                if($confirmed){
+                    // handleAdmin re-resolves the exact online target and executes all
+                    // normal amount, audit, and cooldown checks.
+                    $this->handleAdmin($formPlayer, [$mode, $targetName, $bucket, $amountInput]);
+                }
+                $this->openPanel($formPlayer);
+            }
+        ));
     }
 
     /**

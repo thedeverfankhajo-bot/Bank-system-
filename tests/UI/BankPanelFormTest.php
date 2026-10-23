@@ -54,6 +54,49 @@ final class BankPanelFormTest extends TestCase{
         self::assertSame(0, $calls);
     }
 
+    public function testModalFormUsesNativeSchemaAndDispatchesBothButtons() : void{
+        $responses = [];
+        $form = BankPanelForm::modal(
+            'Confirm transfer',
+            'Send $10.00 to Alex?',
+            'Confirm',
+            'Cancel',
+            static function(Player $player, bool $confirmed) use (&$responses) : void{
+                $responses[] = $confirmed;
+            }
+        );
+
+        self::assertSame([
+            'type' => 'modal',
+            'title' => 'Confirm transfer',
+            'content' => 'Send $10.00 to Alex?',
+            'button1' => 'Confirm',
+            'button2' => 'Cancel'
+        ], $form->jsonSerialize());
+
+        $form->handleResponse(new Player(), true);
+        $form->handleResponse(new Player(), false);
+        self::assertSame([true, false], $responses);
+    }
+
+    public function testModalFormIgnoresInvalidResponsesAndClosingTheForm() : void{
+        $calls = 0;
+        $form = BankPanelForm::modal(
+            'Confirm',
+            'Are you sure?',
+            'Yes',
+            'No',
+            static function(Player $player, bool $confirmed) use (&$calls) : void{
+                ++$calls;
+            }
+        );
+
+        $form->handleResponse(new Player(), 0);
+        $form->handleResponse(new Player(), 'true');
+        $form->handleResponse(new Player(), null);
+        self::assertSame(0, $calls);
+    }
+
     public function testCustomFormUsesNativeSchemaAndForwardsOnlyArrayResponses() : void{
         $received = null;
         $form = BankPanelForm::custom(

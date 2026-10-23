@@ -38,6 +38,33 @@ final class BankPanelForm implements Form{
     }
 
     /**
+     * Creates a confirmation form. "true" means the first button was selected;
+     * "false" means the second button was selected. A closed form never calls
+     * the handler.
+     *
+     * @param callable(Player, bool): void $handler
+     */
+    public static function modal(
+        string $title,
+        string $content,
+        string $confirmLabel,
+        string $cancelLabel,
+        callable $handler
+    ) : self{
+        return new self(
+            'modal',
+            $title,
+            $content,
+            [
+                ['text' => $confirmLabel, 'action' => 'confirm'],
+                ['text' => $cancelLabel, 'action' => 'cancel']
+            ],
+            [],
+            Closure::fromCallable($handler)
+        );
+    }
+
+    /**
      * @param list<array<string, mixed>> $elements
      * @param callable(Player, mixed): void $handler
      */
@@ -59,6 +86,16 @@ final class BankPanelForm implements Form{
             ];
         }
 
+        if($this->type === 'modal'){
+            return [
+                'type' => 'modal',
+                'title' => $this->title,
+                'content' => $this->text,
+                'button1' => $this->buttons[0]['text'],
+                'button2' => $this->buttons[1]['text']
+            ];
+        }
+
         return [
             'type' => 'form',
             'title' => $this->title,
@@ -75,6 +112,14 @@ final class BankPanelForm implements Form{
         // Closing a Bedrock form produces null. Treat it as cancellation, never as a
         // default choice or an implicit transaction.
         if($data === null){
+            return;
+        }
+
+        if($this->type === 'modal'){
+            if(!is_bool($data)){
+                return;
+            }
+            ($this->handler)($player, $data);
             return;
         }
 
