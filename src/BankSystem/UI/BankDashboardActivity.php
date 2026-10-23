@@ -76,8 +76,9 @@ final class BankDashboardActivity{
     }
 
     private static function safeName(string $name) : string{
-        // Names come from server-side history, but do not let stored formatting codes
-        // inject extra Bedrock color controls into this view.
-        return str_replace(["§", "\r", "\n"], '', $name);
+        // Strip formatting code pairs, not just the section sign (which would leave
+        // the code letter visible), and remove line breaks that could spoof entries.
+        $name = preg_replace('/§[0-9a-fk-or]/iu', '', $name) ?? $name;
+        return str_replace(["\r", "\n"], '', $name);
     }
 }
