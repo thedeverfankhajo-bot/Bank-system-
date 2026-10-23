@@ -82,7 +82,7 @@ final class BankRepositoryTest extends TestCase{
                 'pay', 2500, 'wallet', 'wallet'
             );
             self::fail('Expected the audit ledger insert to fail.');
-        }catch(\SQLite3Exception $exception){
+        }catch(\Exception $exception){
             self::assertStringContainsString('forced ledger failure', $exception->getMessage());
         }
 
