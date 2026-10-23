@@ -203,6 +203,46 @@ final class BankRepositoryTest extends TestCase{
         }
     }
 
+    public function testDatabaseAndExistingSidecarsAreOwnerOnlyOnPosix() : void{
+        if(DIRECTORY_SEPARATOR === '\\'){
+            self::markTestSkipped('POSIX file permission bits are not portable to Windows.');
+        }
+
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-permissions-' . bin2hex(random_bytes(8)) . '.sqlite3';
+        $repository = new BankRepository($path);
+
+        try{
+            $repository->ensureAccount('permission-player-a', 'PermissionA', 10000, 0);
+            $repository->ensureAccount('permission-player-b', 'PermissionB', 0, 0);
+            $repository->move(
+                'permission-player-a', 'PermissionA',
+                'permission-player-a', 'PermissionA',
+                'permission-player-b', 'PermissionB',
+                'pay', 100, 'wallet', 'wallet'
+            );
+
+            self::assertFileExists($path);
+            foreach([$path, $path . '-wal', $path . '-shm'] as $file){
+                if(!is_file($file)){
+                    continue;
+                }
+                $permissions = fileperms($file);
+                self::assertNotFalse($permissions, 'Could not read permissions for ' . basename($file));
+                if($permissions !== false){
+                    self::assertSame(0, $permissions & 0077, basename($file) . ' must not grant group/world access.');
+                }
+            }
+        }finally{
+            try{
+                $repository->close();
+            }catch(\Throwable){
+            }
+            @unlink($path);
+            @unlink($path . '-wal');
+            @unlink($path . '-shm');
+        }
+    }
+
     public function testLeaderboardSortsByBankBalanceAndBreaksTiesByName() : void{
         $this->repository->ensureAccount('player-c', 'Casey', 0, 0);
         $this->repository->adjustBalance(

@@ -11,6 +11,7 @@ use Throwable;
 
 final class BankRepository{
     private \SQLite3 $database;
+    private string $path;
 
     public function __construct(string $path){
         $directory = dirname($path);
@@ -18,6 +19,7 @@ final class BankRepository{
             throw new RuntimeException('Could not create the bank database directory.');
         }
 
+        $this->path = $path;
         $this->database = new \SQLite3($path, SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE);
         try{
             $this->database->enableExceptions(true);
@@ -25,6 +27,8 @@ final class BankRepository{
             $this->database->exec('PRAGMA journal_mode = WAL');
             $this->database->exec('PRAGMA synchronous = FULL');
             $this->database->exec('PRAGMA foreign_keys = ON');
+            // Balance data and transaction history must not be world-readable on POSIX systems.
+            $this->secureStoragePermissions();
             $this->migrate();
         }catch(Throwable $exception){
             $this->database->close();
@@ -34,6 +38,24 @@ final class BankRepository{
 
     public function close() : void{
         $this->database->close();
+    }
+
+    /**
+     * Restricts SQLite data and sidecar files to the server account on POSIX systems.
+     * Windows file access is controlled by filesystem ACLs instead.
+     *
+     * @throws RuntimeException if an existing file cannot be protected
+     */
+    private function secureStoragePermissions() : void{
+        if(DIRECTORY_SEPARATOR === '\\'){
+            return;
+        }
+
+        foreach([$this->path, $this->path . '-wal', $this->path . '-shm'] as $file){
+            if(is_file($file) && !@chmod($file, 0600)){
+                throw new RuntimeException('Could not restrict permissions on bank storage file: ' . basename($file));
+            }
+        }
     }
 
     private function migrate() : void{
@@ -83,6 +105,7 @@ final class BankRepository{
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_to ON bank_transactions(to_uuid, id DESC)');
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_actor ON bank_transactions(actor_uuid, id DESC)');
             $this->database->exec('PRAGMA user_version = 1');
+            $this->secureStoragePermissions();
             $this->database->exec('COMMIT');
             $transactionOpen = false;
         }catch(Throwable $exception){
@@ -201,6 +224,7 @@ final class BankRepository{
                 'created_at' => $now
             ];
             $record['id'] = $this->insertTransaction($record);
+            $this->secureStoragePermissions();
             $this->database->exec('COMMIT');
             $transactionOpen = false;
             return $record;
@@ -288,6 +312,7 @@ final class BankRepository{
                 'created_at' => $now
             ];
             $record['id'] = $this->insertTransaction($record);
+            $this->secureStoragePermissions();
             $this->database->exec('COMMIT');
             $transactionOpen = false;
             return $record;
