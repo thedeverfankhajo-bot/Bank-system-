@@ -11,7 +11,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 
 ## Features
 
-- Native in-game Bedrock form panel with a styled account dashboard, a one-tap balance refresh, paginated transaction history, leaderboard, transfers, and permission-gated admin tools.
+- Native in-game Bedrock form panel with a styled account dashboard, a one-tap balance refresh, a three-entry recent-activity preview, paginated transaction history, leaderboard, transfers, and permission-gated admin tools.
 - Explicit confirmation forms for player transfers and privileged administrator balance changes.
 - Separate wallet and bank balances, stored as integer minor units to avoid floating-point money errors.
 - `/bank`, `/bank balance`, `/bank deposit`, `/bank withdraw`, `/bank pay`, `/bank top`, and `/bank history`.

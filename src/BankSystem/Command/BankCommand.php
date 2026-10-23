@@ -11,6 +11,7 @@ use BankSystem\Service\BankService;
 use BankSystem\Support\Money;
 use BankSystem\Support\PlayerIdentity;
 use BankSystem\Support\TransactionCooldown;
+use BankSystem\UI\BankDashboardActivity;
 use BankSystem\UI\BankHistoryPage;
 use BankSystem\UI\BankPanelForm;
 use pocketmine\command\CommandSender;
@@ -100,7 +101,19 @@ final class BankCommand{
         }
 
         try{
-            $account = $this->service->getAccount($player->getUniqueId()->toString(), $player->getName());
+            $accountUuid = $player->getUniqueId()->toString();
+            $account = $this->service->getAccount($accountUuid, $player->getName());
+            $activityText = "§6§lRECENT ACTIVITY\n§8------------------------------\n§7Recent activity is temporarily unavailable.";
+            try{
+                $activityText = BankDashboardActivity::render(
+                    $accountUuid,
+                    $this->service->getHistory($accountUuid, 3, 0),
+                    fn(int $amount) : string => $this->formatMoney($amount)
+                );
+            }catch(Throwable $exception){
+                // Keep the balance dashboard available if the optional activity preview cannot be read.
+                $this->logReadError('dashboard activity', $exception);
+            }
             $buttons = [
                 ['text' => '§a[1] §fDeposit to bank', 'action' => 'deposit'],
                 ['text' => '§e[2] §fWithdraw to wallet', 'action' => 'withdraw'],
@@ -122,7 +135,8 @@ final class BankCommand{
                 "§7TOTAL FUNDS  §f§l" . $this->formatMoney($account->totalBalance()) . "\n" .
                 "§8------------------------------\n\n" .
                 "§7Choose a service below.\n" .
-                "§8Your account is linked to your player UUID.";
+                "§8Your account is linked to your player UUID.\n\n" .
+                $activityText;
 
             $player->sendForm(BankPanelForm::simple(
                 '§l§6BANKSYSTEM §8• §fBANKING',
