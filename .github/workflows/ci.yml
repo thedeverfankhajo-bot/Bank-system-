@@ -44,4 +44,4 @@ jobs:
 
       - name: Validate YAML files
         run: |
-          ruby -e 'require "yaml"; ARGV.each { |file| YAML.load_file(file, aliases: true); puts "#{file}: OK" }' plugin.yml resources/config.yml .github/workflows/ci.yml .github/dependabot.yml
+          ruby -e 'require "yaml"; ARGV.each { |file| YAML.load_file(file, aliases: true); puts "#{file}: OK" }' plugin.yml resources/config.yml .github/workflows/ci.yml .github/workflows/codeql.yml .github/dependabot.yml
