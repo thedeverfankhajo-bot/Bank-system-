@@ -172,4 +172,75 @@ final class BankRepositoryTest extends TestCase{
         self::assertSame(PHP_INT_MAX, $target->bankBalance);
         self::assertCount(0, $this->repository->getHistory('player-a', 10, 0));
     }
+    public function testDatabaseCanBeReopenedWithoutLosingBalancesOrHistory() : void{
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-test-' . bin2hex(random_bytes(8)) . '.sqlite3';
+        $repository = new BankRepository($path);
+
+        try{
+            $repository->ensureAccount('persistent-player', 'Persisted', 10000, 500);
+            $repository->move(
+                'persistent-player', 'Persisted',
+                'persistent-player', 'Persisted',
+                'persistent-player', 'Persisted',
+                'deposit', 2500, 'wallet', 'bank'
+            );
+            $repository->close();
+
+            $repository = new BankRepository($path);
+            $account = $repository->getAccount('persistent-player');
+            self::assertNotNull($account);
+            self::assertSame(7500, $account->walletBalance);
+            self::assertSame(3000, $account->bankBalance);
+            self::assertCount(1, $repository->getHistory('persistent-player', 10, 0));
+        }finally{
+            try{
+                $repository->close();
+            }catch(\Throwable){
+            }
+            @unlink($path);
+            @unlink($path . '-wal');
+            @unlink($path . '-shm');
+        }
+    }
+
+    public function testLeaderboardSortsByBankBalanceAndBreaksTiesByName() : void{
+        $this->repository->ensureAccount('player-c', 'Casey', 0, 0);
+        $this->repository->adjustBalance(
+            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 1500
+        );
+        $this->repository->adjustBalance(
+            'console', 'CONSOLE', 'player-c', 'Casey', 'bank', 'give', 1500
+        );
+
+        $top = $this->repository->getTopAccounts(3);
+
+        self::assertSame(['Blake', 'Casey', 'Alex'], array_map(
+            static fn(\BankSystem\BankAccount $account) : string => $account->playerName,
+            $top
+        ));
+    }
+
+    public function testInvalidBucketAndAdjustmentModeAreRejected() : void{
+        try{
+            $this->repository->adjustBalance(
+                'console', 'CONSOLE', 'player-b', 'Blake', 'cash', 'give', 500
+            );
+            self::fail('Expected an unsupported balance bucket to be rejected.');
+        }catch(BankException){
+        }
+
+        try{
+            $this->repository->adjustBalance(
+                'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'mint', 500
+            );
+            self::fail('Expected an unsupported adjustment mode to be rejected.');
+        }catch(BankException){
+        }
+
+        $account = $this->repository->getAccount('player-b');
+        self::assertNotNull($account);
+        self::assertSame(0, $account->bankBalance);
+        self::assertCount(0, $this->repository->getHistory('player-b', 10, 0));
+    }
+
 }

@@ -37,46 +37,63 @@ final class BankRepository{
     }
 
     private function migrate() : void{
-        $version = (int) $this->database->querySingle('PRAGMA user_version');
-        if($version > 1){
-            throw new RuntimeException('The bank database was created by a newer BankSystem version.');
-        }
+        // SQLite DDL and user_version changes are transactional. Keep the schema and its
+        // version marker in one write transaction so interrupted migrations can be retried.
+        $this->database->exec('BEGIN IMMEDIATE');
+        $transactionOpen = true;
 
-        $this->database->exec(
-            'CREATE TABLE IF NOT EXISTS bank_accounts (
-                uuid TEXT PRIMARY KEY,
-                player_name TEXT NOT NULL,
-                wallet_balance INTEGER NOT NULL DEFAULT 0 CHECK(wallet_balance >= 0),
-                bank_balance INTEGER NOT NULL DEFAULT 0 CHECK(bank_balance >= 0),
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            )'
-        );
-        $this->database->exec(
-            'CREATE TABLE IF NOT EXISTS bank_transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                transaction_id TEXT NOT NULL UNIQUE,
-                actor_uuid TEXT NOT NULL,
-                actor_name TEXT NOT NULL,
-                from_uuid TEXT NOT NULL,
-                from_name TEXT NOT NULL,
-                to_uuid TEXT NOT NULL,
-                to_name TEXT NOT NULL,
-                action TEXT NOT NULL,
-                amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0),
-                from_bucket TEXT NOT NULL CHECK(from_bucket IN (\'wallet\', \'bank\')),
-                to_bucket TEXT NOT NULL CHECK(to_bucket IN (\'wallet\', \'bank\')),
-                from_balance_before INTEGER NOT NULL,
-                from_balance_after INTEGER NOT NULL,
-                to_balance_before INTEGER NOT NULL,
-                to_balance_after INTEGER NOT NULL,
-                created_at INTEGER NOT NULL
-            )'
-        );
-        $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_from ON bank_transactions(from_uuid, id DESC)');
-        $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_to ON bank_transactions(to_uuid, id DESC)');
-        $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_actor ON bank_transactions(actor_uuid, id DESC)');
-        $this->database->exec('PRAGMA user_version = 1');
+        try{
+            $version = (int) $this->database->querySingle('PRAGMA user_version');
+            if($version > 1){
+                throw new RuntimeException('The bank database was created by a newer BankSystem version.');
+            }
+
+            $this->database->exec(
+                'CREATE TABLE IF NOT EXISTS bank_accounts (
+                    uuid TEXT PRIMARY KEY,
+                    player_name TEXT NOT NULL,
+                    wallet_balance INTEGER NOT NULL DEFAULT 0 CHECK(wallet_balance >= 0),
+                    bank_balance INTEGER NOT NULL DEFAULT 0 CHECK(bank_balance >= 0),
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )'
+            );
+            $this->database->exec(
+                'CREATE TABLE IF NOT EXISTS bank_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transaction_id TEXT NOT NULL UNIQUE,
+                    actor_uuid TEXT NOT NULL,
+                    actor_name TEXT NOT NULL,
+                    from_uuid TEXT NOT NULL,
+                    from_name TEXT NOT NULL,
+                    to_uuid TEXT NOT NULL,
+                    to_name TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    amount_minor INTEGER NOT NULL CHECK(amount_minor >= 0),
+                    from_bucket TEXT NOT NULL CHECK(from_bucket IN (\'wallet\', \'bank\')),
+                    to_bucket TEXT NOT NULL CHECK(to_bucket IN (\'wallet\', \'bank\')),
+                    from_balance_before INTEGER NOT NULL,
+                    from_balance_after INTEGER NOT NULL,
+                    to_balance_before INTEGER NOT NULL,
+                    to_balance_after INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                )'
+            );
+            $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_from ON bank_transactions(from_uuid, id DESC)');
+            $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_to ON bank_transactions(to_uuid, id DESC)');
+            $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_actor ON bank_transactions(actor_uuid, id DESC)');
+            $this->database->exec('PRAGMA user_version = 1');
+            $this->database->exec('COMMIT');
+            $transactionOpen = false;
+        }catch(Throwable $exception){
+            if($transactionOpen){
+                try{
+                    $this->database->exec('ROLLBACK');
+                }catch(Throwable){
+                }
+            }
+            throw $exception;
+        }
     }
 
     public function ensureAccount(string $uuid, string $playerName, int $initialWallet, int $initialBank) : void{
