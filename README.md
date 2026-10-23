@@ -2,6 +2,13 @@
 
 A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP API 5.
 
+## Documentation
+
+- [فارسی — راهنمای فارسی](README.fa.md)
+- [API integration guide](docs/API.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+
 ## Features
 
 - Separate wallet and bank balances, stored as integer minor units to avoid floating-point money errors.

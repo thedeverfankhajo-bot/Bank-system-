@@ -209,8 +209,8 @@ final class BankCommand{
 
         $page = 1;
         if(isset($args[1])){
-            if(!ctype_digit($args[1]) || (int) $args[1] < 1 || (int) $args[1] > 1000){
-                $this->message($sender, 'Page must be a whole number between 1 and 1000.');
+            if(!ctype_digit($args[1]) || (int) $args[1] < 1 || (int) $args[1] > 10000){
+                $this->message($sender, 'Page must be a whole number between 1 and 10000.');
                 return;
             }
             $page = (int) $args[1];
@@ -286,12 +286,7 @@ final class BankCommand{
             }else{
                 $this->service->setBalance($targetUuid, $targetName, $bucket, $amount, $actorUuid, $actorName);
             }
-            if($mode === 'set'){
-                $this->message($sender, 'Admin set: ' . $targetName . ' ' . $bucket . ' balance set to ' . $this->formatMoney($amount) . '.');
-            }else{
-                $verb = $mode === 'give' ? 'Added ' : 'Removed ';
-                $this->message($sender, 'Admin ' . $mode . ': ' . $verb . $this->formatMoney($amount) . ' ' . ($mode === 'give' ? 'to ' : 'from ') . $targetName . ' ' . $bucket . '.');
-            }
+            $this->message($sender, 'Admin ' . $mode . ' applied: ' . $targetName . ' ' . $bucket . ' = ' . $this->formatMoney($amount) . '.');
             if($target !== $sender){
                 $this->message($target, 'An administrator updated your ' . $bucket . ' balance.');
             }
