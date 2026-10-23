@@ -37,9 +37,7 @@ final class Money{
         return $minor;
     }
 
-    public static function format(int $minor, string $symbol = '
-}
-) : string{
+    public static function format(int $minor, string $symbol = '$') : string{
         // Divide before taking the absolute value so PHP_INT_MIN is handled without integer overflow.
         $negative = $minor < 0;
         $whole = abs(intdiv($minor, 100));
