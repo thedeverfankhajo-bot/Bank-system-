@@ -46,7 +46,7 @@ jobs:
 
       - name: Archive CodeQL SARIF results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: codeql-sarif-${{ github.run_id }}
           path: ${{ runner.temp }}/codeql-results
