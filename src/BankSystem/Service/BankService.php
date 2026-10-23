@@ -44,7 +44,8 @@ final class BankService{
             $uuid, $playerName,
             $uuid, $playerName,
             $uuid, $playerName,
-            'deposit', $amountMinor, 'wallet', 'bank'
+            'deposit', $amountMinor, 'wallet', 'bank',
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
         );
         $this->publish($record);
     }
@@ -56,7 +57,8 @@ final class BankService{
             $uuid, $playerName,
             $uuid, $playerName,
             $uuid, $playerName,
-            'withdraw', $amountMinor, 'bank', 'wallet'
+            'withdraw', $amountMinor, 'bank', 'wallet',
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
         );
         $this->publish($record);
     }
@@ -79,7 +81,8 @@ final class BankService{
             $fromUuid, $fromName,
             $fromUuid, $fromName,
             $toUuid, $toName,
-            'pay', $amountMinor, 'wallet', 'wallet'
+            'pay', $amountMinor, 'wallet', 'wallet',
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
         );
         $this->publish($record);
     }
@@ -95,7 +98,8 @@ final class BankService{
         $this->guardTransactionAmount($amountMinor);
         $this->getAccount($targetUuid, $targetName);
         $this->publish($this->repository->adjustBalance(
-            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'give', $amountMinor
+            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'give', $amountMinor,
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
         ));
     }
 
@@ -110,7 +114,8 @@ final class BankService{
         $this->guardTransactionAmount($amountMinor);
         $this->getAccount($targetUuid, $targetName);
         $this->publish($this->repository->adjustBalance(
-            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'take', $amountMinor
+            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'take', $amountMinor,
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
         ));
     }
 
@@ -127,7 +132,8 @@ final class BankService{
         }
         $this->getAccount($targetUuid, $targetName);
         $this->publish($this->repository->adjustBalance(
-            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'set', $amountMinor
+            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'set', $amountMinor,
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
         ));
     }
 

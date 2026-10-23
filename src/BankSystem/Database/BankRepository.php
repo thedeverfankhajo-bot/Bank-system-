@@ -156,10 +156,14 @@ final class BankRepository{
         string $action,
         int $amount,
         string $fromBucket,
-        string $toBucket
+        string $toBucket,
+        int $maximumTransactionMinor
     ) : array{
         if($amount <= 0){
             throw new BankException('The amount must be greater than zero.');
+        }
+        if($maximumTransactionMinor < 0 || $amount > $maximumTransactionMinor){
+            throw new BankException('The amount exceeds the configured transaction limit.');
         }
 
         $fromColumn = $this->columnForBucket($fromBucket);
@@ -251,7 +255,8 @@ final class BankRepository{
         string $targetName,
         string $bucket,
         string $mode,
-        int $amount
+        int $amount,
+        int $maximumChangeMinor
     ) : array{
         $column = $this->columnForBucket($bucket);
         if(!in_array($mode, ['give', 'take', 'set'], true)){
@@ -259,6 +264,9 @@ final class BankRepository{
         }
         if($amount < 0 || ($mode !== 'set' && $amount === 0)){
             throw new BankException('The amount must be greater than zero.');
+        }
+        if($maximumChangeMinor < 0){
+            throw new BankException('The configured transaction limit cannot be negative.');
         }
 
         $this->database->exec('BEGIN IMMEDIATE');
@@ -284,6 +292,13 @@ final class BankRepository{
                 $after = $amount;
             }
 
+            // Enforce the cap against the actual balance read under BEGIN IMMEDIATE.
+            // For "set", the configured cap applies to the delta, not the final balance.
+            $changeMinor = abs($after - $before);
+            if($changeMinor > $maximumChangeMinor){
+                throw new BankException('The balance change exceeds the configured transaction limit.');
+            }
+
             $now = time();
             $changes = $this->execute(
                 'UPDATE bank_accounts SET ' . $column . ' = :balance, updated_at = :now WHERE uuid = :uuid',
@@ -302,7 +317,7 @@ final class BankRepository{
                 'to_uuid' => $targetUuid,
                 'to_name' => $targetName,
                 'action' => 'admin_' . $mode . '_' . $bucket,
-                'amount_minor' => abs($after - $before),
+                'amount_minor' => $changeMinor,
                 'from_bucket' => $bucket,
                 'to_bucket' => $bucket,
                 'from_balance_before' => $before,

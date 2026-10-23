@@ -33,7 +33,7 @@ final class BankRepositoryTest extends TestCase{
             'player-a', 'Alex',
             'player-a', 'Alex',
             'player-a', 'Alex',
-            'deposit', 2500, 'wallet', 'bank'
+            'deposit', 2500, 'wallet', 'bank', PHP_INT_MAX
         );
 
         $account = $this->repository->getAccount('player-a');
@@ -44,13 +44,36 @@ final class BankRepositoryTest extends TestCase{
         self::assertCount(1, $this->repository->getHistory('player-a', 10, 0));
     }
 
+    public function testTransactionAboveConfiguredMaximumIsRejectedWithoutChangingBalances() : void{
+        try{
+            $this->repository->move(
+                'player-a', 'Alex',
+                'player-a', 'Alex',
+                'player-b', 'Blake',
+                'pay', 2500, 'wallet', 'wallet', 1000
+            );
+            self::fail('Expected a transaction above the configured cap to be rejected.');
+        }catch(BankException $exception){
+            self::assertStringContainsString('configured transaction limit', $exception->getMessage());
+        }
+
+        $source = $this->repository->getAccount('player-a');
+        $target = $this->repository->getAccount('player-b');
+        self::assertNotNull($source);
+        self::assertNotNull($target);
+        self::assertSame(10000, $source->walletBalance);
+        self::assertSame(0, $target->walletBalance);
+        self::assertCount(0, $this->repository->getHistory('player-a', 10, 0));
+        self::assertCount(0, $this->repository->getHistory('player-b', 10, 0));
+    }
+
     public function testFailedTransferLeavesBalancesAndHistoryUnchanged() : void{
         try{
             $this->repository->move(
                 'player-a', 'Alex',
                 'player-a', 'Alex',
                 'player-b', 'Blake',
-                'pay', 20000, 'wallet', 'wallet'
+                'pay', 20000, 'wallet', 'wallet', PHP_INT_MAX
             );
             self::fail('Expected the transfer to fail for insufficient funds.');
         }catch(BankException){
@@ -79,7 +102,7 @@ final class BankRepositoryTest extends TestCase{
                 'player-a', 'Alex',
                 'player-a', 'Alex',
                 'player-b', 'Blake',
-                'pay', 2500, 'wallet', 'wallet'
+                'pay', 2500, 'wallet', 'wallet', PHP_INT_MAX
             );
             self::fail('Expected the audit ledger insert to fail.');
         }catch(\Exception $exception){
@@ -98,7 +121,7 @@ final class BankRepositoryTest extends TestCase{
 
     public function testAdminAdjustmentIsRecorded() : void{
         $record = $this->repository->adjustBalance(
-            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 500
+            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 500, 500
         );
 
         $account = $this->repository->getAccount('player-b');
@@ -113,7 +136,7 @@ final class BankRepositoryTest extends TestCase{
             'player-a', 'Alex',
             'player-a', 'Alex',
             'player-a', 'Alex',
-            'deposit', 2500, 'wallet', 'bank'
+            'deposit', 2500, 'wallet', 'bank', PHP_INT_MAX
         );
 
         $this->repository->ensureAccount('player-a', 'Alex_New', 999999, 999999);
@@ -130,7 +153,7 @@ final class BankRepositoryTest extends TestCase{
             'player-a', 'Alex',
             'player-a', 'Alex',
             'player-b', 'Blake',
-            'pay', 2500, 'wallet', 'wallet'
+            'pay', 2500, 'wallet', 'wallet', PHP_INT_MAX
         );
 
         $source = $this->repository->getAccount('player-a');
@@ -151,7 +174,7 @@ final class BankRepositoryTest extends TestCase{
                 'player-a', 'Alex',
                 'player-a', 'Alex',
                 'player-a', 'Alex',
-                'invalid-self-transfer', 100, 'wallet', 'wallet'
+                'invalid-self-transfer', 100, 'wallet', 'wallet', PHP_INT_MAX
             );
             self::fail('Expected the same-balance transfer to be rejected.');
         }catch(BankException){
@@ -163,12 +186,45 @@ final class BankRepositoryTest extends TestCase{
         self::assertCount(0, $this->repository->getHistory('player-a', 10, 0));
     }
 
+    public function testAdminSetCannotExceedConfiguredChangeLimit() : void{
+        try{
+            $this->repository->adjustBalance(
+                'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'set', 100000, 1000
+            );
+            self::fail('Expected setting a balance beyond the configured change limit to be rejected.');
+        }catch(BankException $exception){
+            self::assertStringContainsString('configured transaction limit', $exception->getMessage());
+        }
+
+        $account = $this->repository->getAccount('player-b');
+        self::assertNotNull($account);
+        self::assertSame(0, $account->bankBalance);
+        self::assertCount(0, $this->repository->getHistory('player-b', 10, 0));
+    }
+
+    public function testAdminSetLimitUsesAtomicDeltaFromCurrentBalance() : void{
+        $this->repository->adjustBalance(
+            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 1500, 1500
+        );
+
+        $record = $this->repository->adjustBalance(
+            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'set', 2000, 500
+        );
+
+        $account = $this->repository->getAccount('player-b');
+        self::assertNotNull($account);
+        self::assertSame(2000, $account->bankBalance);
+        self::assertSame(500, $record['amount_minor']);
+        self::assertSame(1500, $record['from_balance_before']);
+        self::assertSame(2000, $record['from_balance_after']);
+    }
+
     public function testAdminSetToZeroRecordsBalanceDelta() : void{
         $this->repository->adjustBalance(
-            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 500
+            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 500, 500
         );
         $record = $this->repository->adjustBalance(
-            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'set', 0
+            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'set', 0, 500
         );
 
         $account = $this->repository->getAccount('player-b');
@@ -189,7 +245,7 @@ final class BankRepositoryTest extends TestCase{
                 'player-a', 'Alex',
                 'player-a', 'Alex',
                 'player-c', 'Casey',
-                'pay', 1, 'wallet', 'bank'
+                'pay', 1, 'wallet', 'bank', PHP_INT_MAX
             );
             self::fail('Expected an overflowing destination balance to be rejected.');
         }catch(BankException){
@@ -213,7 +269,7 @@ final class BankRepositoryTest extends TestCase{
                 'persistent-player', 'Persisted',
                 'persistent-player', 'Persisted',
                 'persistent-player', 'Persisted',
-                'deposit', 2500, 'wallet', 'bank'
+                'deposit', 2500, 'wallet', 'bank', PHP_INT_MAX
             );
             $repository->close();
 
@@ -249,7 +305,7 @@ final class BankRepositoryTest extends TestCase{
                 'permission-player-a', 'PermissionA',
                 'permission-player-a', 'PermissionA',
                 'permission-player-b', 'PermissionB',
-                'pay', 100, 'wallet', 'wallet'
+                'pay', 100, 'wallet', 'wallet', PHP_INT_MAX
             );
 
             self::assertFileExists($path);
@@ -277,10 +333,10 @@ final class BankRepositoryTest extends TestCase{
     public function testLeaderboardSortsByBankBalanceAndBreaksTiesByName() : void{
         $this->repository->ensureAccount('player-c', 'Casey', 0, 0);
         $this->repository->adjustBalance(
-            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 1500
+            'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'give', 1500, 1500
         );
         $this->repository->adjustBalance(
-            'console', 'CONSOLE', 'player-c', 'Casey', 'bank', 'give', 1500
+            'console', 'CONSOLE', 'player-c', 'Casey', 'bank', 'give', 1500, 1500
         );
 
         $top = $this->repository->getTopAccounts(3);
@@ -294,7 +350,7 @@ final class BankRepositoryTest extends TestCase{
     public function testInvalidBucketAndAdjustmentModeAreRejected() : void{
         try{
             $this->repository->adjustBalance(
-                'console', 'CONSOLE', 'player-b', 'Blake', 'cash', 'give', 500
+                'console', 'CONSOLE', 'player-b', 'Blake', 'cash', 'give', 500, PHP_INT_MAX
             );
             self::fail('Expected an unsupported balance bucket to be rejected.');
         }catch(BankException){
@@ -302,7 +358,7 @@ final class BankRepositoryTest extends TestCase{
 
         try{
             $this->repository->adjustBalance(
-                'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'mint', 500
+                'console', 'CONSOLE', 'player-b', 'Blake', 'bank', 'mint', 500, PHP_INT_MAX
             );
             self::fail('Expected an unsupported adjustment mode to be rejected.');
         }catch(BankException){

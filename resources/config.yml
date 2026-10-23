@@ -8,7 +8,7 @@ balances:
   initial-bank: "0.00"
 
 limits:
-  # Maximum amount accepted by a single deposit, withdrawal, transfer, give, or take.
+  # Maximum amount accepted by a single deposit, withdrawal, transfer, give, take, or balance-set delta.
   max-transaction: "1000000.00"
 
 security:

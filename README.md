@@ -53,7 +53,7 @@ The SQLite database is created automatically in the plugin data folder. Back it 
 | `/bank admin take <player> <wallet\|bank> <amount>` | Remove funds from an online player |
 | `/bank admin set <player> <wallet\|bank> <amount>` | Set an online player's balance (zero is allowed) |
 
-The `banksystem.admin` permission defaults to operators. Ordinary players receive `banksystem.use` by default. Amounts must be positive and may contain at most two decimal places; admin `set` may use `0`. Per-player transaction cooldown state is cleared on disconnect.
+The `banksystem.admin` permission defaults to operators. Ordinary players receive `banksystem.use` by default. Amounts must be positive and may contain at most two decimal places; admin `set` may use `0`. The configured transaction cap also limits the absolute balance change made by admin `set`. Per-player transaction cooldown state is cleared on disconnect.
 
 ## Configuration
 
