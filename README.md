@@ -11,6 +11,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 
 ## Features
 
+- Native in-game Bedrock form panel for balances, deposits, withdrawals, player payments, transaction history, leaderboard, and permission-gated admin tools.
 - Separate wallet and bank balances, stored as integer minor units to avoid floating-point money errors.
 - `/bank`, `/bank balance`, `/bank deposit`, `/bank withdraw`, `/bank pay`, `/bank top`, and `/bank history`.
 - Operator-only balance administration for online players.
@@ -31,13 +32,16 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 3. Start the server once to generate `plugin_data/BankSystem/config.yml` and `bank.sqlite3`.
 4. Configure the currency and limits, then restart the server.
 
+Run `/bank` or `/bank panel` in-game to open the native Bedrock form panel. It uses PocketMine-MP's built-in form transport and does not require a separate FormAPI plugin.
+
 The SQLite database is created automatically in the plugin data folder. Back it up while the server is stopped.
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `/bank` or `/bank balance` | Show your wallet, bank, and total balance |
+| `/bank` or `/bank panel` | Open the interactive in-game bank panel |
+| `/bank balance` | Show your wallet, bank, and total balance |
 | `/bank deposit <amount>` | Move money from wallet to bank |
 | `/bank withdraw <amount>` | Move money from bank to wallet |
 | `/bank pay <player> <amount>` | Send wallet money to an online player |

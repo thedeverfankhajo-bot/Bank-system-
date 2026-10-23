@@ -9,6 +9,7 @@ use BankSystem\BankException;
 use BankSystem\Main;
 use BankSystem\Service\BankService;
 use BankSystem\Support\Money;
+use BankSystem\UI\BankPanelForm;
 use pocketmine\command\CommandSender;
 use pocketmine\player\Player;
 use Throwable;
@@ -32,10 +33,18 @@ final class BankCommand{
             return true;
         }
 
-        $subcommand = strtolower($args[0] ?? 'balance');
+        $subcommand = strtolower($args[0] ?? 'panel');
         switch($subcommand){
             case 'help':
                 $this->showHelp($sender);
+                return true;
+            case 'panel':
+            case 'menu':
+            case 'gui':
+                $player = $this->requirePlayer($sender);
+                if($player !== null){
+                    $this->openPanel($player);
+                }
                 return true;
             case 'balance':
             case 'bal':
@@ -65,6 +74,226 @@ final class BankCommand{
             default:
                 $this->showHelp($sender);
                 return true;
+        }
+    }
+
+
+    /**
+     * Opens the in-game Bedrock form panel. All mutations are delegated to the same
+     * transaction handlers used by commands, so permission, amount and cooldown rules
+     * remain consistent between both entry points.
+     */
+    public function openPanel(Player $player) : void{
+        try{
+            $account = $this->service->getAccount($player->getUniqueId()->toString(), $player->getName());
+            $buttons = [
+                ['text' => 'Deposit to bank', 'action' => 'deposit'],
+                ['text' => 'Withdraw to wallet', 'action' => 'withdraw'],
+                ['text' => 'Send money to player', 'action' => 'pay'],
+                ['text' => 'Transaction history', 'action' => 'history'],
+                ['text' => 'Top 10 bank accounts', 'action' => 'top']
+            ];
+            if($player->hasPermission('banksystem.admin')){
+                $buttons[] = ['text' => 'Administrator tools', 'action' => 'admin'];
+            }
+
+            $content = "§7Wallet: §f" . $this->formatMoney($account->walletBalance) .
+                "\n§7Bank: §f" . $this->formatMoney($account->bankBalance) .
+                "\n§7Total: §f" . $this->formatMoney($account->totalBalance()) .
+                "\n\n§8Select an action below.";
+
+            $player->sendForm(BankPanelForm::simple(
+                '§l§6BankSystem',
+                $content,
+                $buttons,
+                function(Player $formPlayer, string $action) : void{
+                    $this->openPanelPage($formPlayer, $action);
+                }
+            ));
+        }catch(Throwable $exception){
+            $this->logReadError('panel', $exception);
+            $this->message($player, 'Could not open the bank panel. Check the server log.');
+        }
+    }
+
+    private function openPanelPage(Player $player, string $page) : void{
+        switch($page){
+            case 'menu':
+                $this->openPanel($player);
+                return;
+            case 'deposit':
+                $this->showAmountPanel($player, 'deposit', 'Deposit to bank', 'Enter a positive amount to move from your wallet into the bank.');
+                return;
+            case 'withdraw':
+                $this->showAmountPanel($player, 'withdraw', 'Withdraw to wallet', 'Enter a positive amount to move from your bank into your wallet.');
+                return;
+            case 'pay':
+                $player->sendForm(BankPanelForm::custom(
+                    'Send money',
+                    [
+                        ['type' => 'input', 'text' => 'Exact online player name', 'placeholder' => 'PlayerName', 'default' => ''],
+                        ['type' => 'input', 'text' => 'Amount', 'placeholder' => '10.00', 'default' => '']
+                    ],
+                    function(Player $formPlayer, mixed $data) : void{
+                        $this->handlePanelSubmission($formPlayer, 'pay', $data);
+                    }
+                ));
+                return;
+            case 'history':
+                $this->openHistoryPanel($player);
+                return;
+            case 'top':
+                $this->openLeaderboardPanel($player);
+                return;
+            case 'admin':
+                $this->openAdminPanel($player);
+                return;
+            default:
+                $this->openPanel($player);
+                return;
+        }
+    }
+
+    private function showAmountPanel(Player $player, string $action, string $title, string $description) : void{
+        $player->sendForm(BankPanelForm::custom(
+            $title,
+            [
+                ['type' => 'label', 'text' => $description],
+                ['type' => 'input', 'text' => 'Amount (up to 2 decimal places)', 'placeholder' => '10.00', 'default' => '']
+            ],
+            function(Player $formPlayer, mixed $data) use ($action) : void{
+                $this->handlePanelSubmission($formPlayer, $action, $data);
+            }
+        ));
+    }
+
+    private function openHistoryPanel(Player $player) : void{
+        try{
+            $perPage = (int) $this->plugin->getConfig()->getNested('history.entries-per-page', 10);
+            $perPage = max(1, min(20, $perPage));
+            $rows = $this->service->getHistory($player->getUniqueId()->toString(), $perPage, 0);
+            $content = $rows === [] ? '§7No transactions have been recorded yet.' : '§7Your latest transactions:';
+            foreach($rows as $row){
+                $content .= "\n\n§e#" . (int) $row['id'] . ' §f' .
+                    strtoupper((string) $row['action']) . ' §a' .
+                    $this->formatMoney((int) $row['amount_minor']) .
+                    "\n§7" . (string) $row['from_name'] . ' -> ' . (string) $row['to_name'] .
+                    "\n§8" . date('Y-m-d H:i', (int) $row['created_at']);
+            }
+            $this->showPanelInformation($player, 'Transaction history', $content);
+        }catch(Throwable $exception){
+            $this->logReadError('panel history', $exception);
+            $this->showPanelInformation($player, 'Transaction history', '§cCould not load transaction history. Check the server log.');
+        }
+    }
+
+    private function openLeaderboardPanel(Player $player) : void{
+        try{
+            $accounts = $this->service->getTopAccounts(10);
+            $content = $accounts === [] ? '§7No bank accounts have been created yet.' : '§7Top 10 bank balances:';
+            foreach($accounts as $index => $account){
+                $content .= "\n\n§e#" . ($index + 1) . ' §f' . $account->playerName .
+                    "\n§7Bank: §a" . $this->formatMoney($account->bankBalance);
+            }
+            $this->showPanelInformation($player, 'Bank leaderboard', $content);
+        }catch(Throwable $exception){
+            $this->logReadError('panel leaderboard', $exception);
+            $this->showPanelInformation($player, 'Bank leaderboard', '§cCould not load the leaderboard. Check the server log.');
+        }
+    }
+
+    private function showPanelInformation(Player $player, string $title, string $content) : void{
+        $player->sendForm(BankPanelForm::simple(
+            $title,
+            $content,
+            [['text' => 'Back to BankSystem', 'action' => 'menu']],
+            function(Player $formPlayer, string $action) : void{
+                if($action === 'menu'){
+                    $this->openPanel($formPlayer);
+                }
+            }
+        ));
+    }
+
+    private function openAdminPanel(Player $player) : void{
+        // Never rely on the visibility of a button as an authorization check.
+        if(!$player->hasPermission('banksystem.admin')){
+            $this->message($player, 'You do not have permission to administer bank balances.');
+            $this->openPanel($player);
+            return;
+        }
+
+        $player->sendForm(BankPanelForm::custom(
+            'Administrator tools',
+            [
+                ['type' => 'dropdown', 'text' => 'Action', 'options' => ['Give', 'Take', 'Set balance'], 'default' => 0],
+                ['type' => 'input', 'text' => 'Exact online player name', 'placeholder' => 'PlayerName', 'default' => ''],
+                ['type' => 'dropdown', 'text' => 'Balance type', 'options' => ['Wallet', 'Bank'], 'default' => 1],
+                ['type' => 'input', 'text' => 'Amount (Set may be zero)', 'placeholder' => '10.00', 'default' => '']
+            ],
+            function(Player $formPlayer, mixed $data) : void{
+                $this->handlePanelSubmission($formPlayer, 'admin', $data);
+            }
+        ));
+    }
+
+    private function handlePanelSubmission(Player $player, string $action, mixed $data) : void{
+        if(!is_array($data)){
+            $this->message($player, 'The form response was invalid. Please try again.');
+            $this->openPanel($player);
+            return;
+        }
+
+        if($action === 'deposit' || $action === 'withdraw'){
+            $amount = $data[1] ?? null; // Element zero is the explanatory label.
+            if(!is_string($amount)){
+                $this->message($player, 'Please enter a valid amount.');
+            }else{
+                if($action === 'deposit'){
+                    $this->handleDeposit($player, ['deposit', $amount]);
+                }else{
+                    $this->handleWithdraw($player, ['withdraw', $amount]);
+                }
+            }
+            $this->openPanel($player);
+            return;
+        }
+
+        if($action === 'pay'){
+            $targetName = $data[0] ?? null;
+            $amount = $data[1] ?? null;
+            if(!is_string($targetName) || trim($targetName) === '' || strlen($targetName) > 16 || !is_string($amount)){
+                $this->message($player, 'Enter a valid online player name and amount.');
+                $this->openPanel($player);
+                return;
+            }
+            $this->handlePay($player, ['pay', trim($targetName), $amount]);
+            $this->openPanel($player);
+            return;
+        }
+
+        if($action === 'admin'){
+            if(!$player->hasPermission('banksystem.admin')){
+                $this->message($player, 'You do not have permission to administer bank balances.');
+                $this->openPanel($player);
+                return;
+            }
+            $modeIndex = $data[0] ?? null;
+            $targetName = $data[1] ?? null;
+            $bucketIndex = $data[2] ?? null;
+            $amount = $data[3] ?? null;
+            if(!is_int($modeIndex) || !isset([0, 1, 2][$modeIndex]) ||
+                !is_string($targetName) || trim($targetName) === '' || strlen($targetName) > 16 ||
+                !is_int($bucketIndex) || !isset([0, 1][$bucketIndex]) || !is_string($amount)){
+                $this->message($player, 'Enter valid administrator form values.');
+                $this->openPanel($player);
+                return;
+            }
+
+            $mode = ['give', 'take', 'set'][$modeIndex];
+            $bucket = ['wallet', 'bank'][$bucketIndex];
+            $this->handleAdmin($player, [$mode, trim($targetName), $bucket, $amount]);
+            $this->openPanel($player);
         }
     }
 
@@ -306,7 +535,7 @@ final class BankCommand{
     }
 
     private function showHelp(CommandSender $sender) : void{
-        $this->message($sender, 'Commands: /bank balance, /bank deposit <amount>, /bank withdraw <amount>');
+        $this->message($sender, 'Commands: /bank [panel], /bank balance, /bank deposit <amount>, /bank withdraw <amount>');
         $this->message($sender, '/bank pay <online-player> <amount>, /bank top, /bank history [page]');
         $this->message($sender, 'Admin: /bank admin <give|take|set> <online-player> <wallet|bank> <amount>');
     }
