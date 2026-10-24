@@ -23,7 +23,7 @@
 
 با دستور `/bank` یا `/bank panel` پنل بومی داخل بازی باز می‌شود. این پنل از فرم‌های داخلی PocketMine-MP استفاده می‌کند؛ بدون FormAPI کار می‌کند و نصب بودن FormAPI نیز مانع استفاده از پنل نمی‌شود.
 
-برای توسعه، پوشه پلاگین را با DevTools داخل پوشه plugins قرار دهید. برای انتشار، از DevTools برای ساخت PHAR استفاده کنید و فایل BankSystem.phar را در plugins بگذارید. پس از اولین اجرا، تنظیمات در plugin_data/BankSystem/config.yml و پایگاه داده در plugin_data/BankSystem/bank.sqlite3 ایجاد می‌شوند.
+برای ساخت فایل مستقل PHAR با PHP خط فرمان اجرا کنید: `php -d phar.readonly=0 tools/build-phar.php`. خروجی پیش‌فرض `build/BankSystem.phar` است؛ آن را در پوشه `plugins/` سرور قرار دهید. برای توسعه همچنان می‌توانید از DevTools استفاده کنید. پس از اولین اجرا، تنظیمات در `plugin_data/BankSystem/config.yml` و پایگاه داده در `plugin_data/BankSystem/bank.sqlite3` ایجاد می‌شوند.
 
 ## دستورات
 
@@ -52,10 +52,13 @@
 
 هر تراکنش موفق همراه با رکورد حسابرسی داخل یک تراکنش SQLite ثبت می‌شود. روی سیستم‌های POSIX، پلاگین برای فایل پایگاه‌داده و فایل‌های جانبی موجود مجوز دسترسی فقط برای مالک (0600) اعمال می‌کند؛ در ویندوز باید ACLهای سیستم فایل مناسب باشند. پس از commit، رویداد BankTransactionEvent اجرا می‌شود؛ این رویداد پس از ثبت نهایی اجرا می‌شود و برای لغو تراکنش نیست.
 
-## تست‌ها
+## ساخت و تست
 
-- composer install
-- composer test
-- composer lint
+```sh
+composer install
+composer test
+composer lint
+php -d phar.readonly=0 tools/build-phar.php
+```
 
-این مخزن تست زنده داخل سرور PocketMine را به‌جای شما انجام نمی‌دهد؛ پیش از استفاده تجاری، پلاگین را در سرور آزمایشی و با نسخه واقعی سرور بررسی کنید.
+CI تست‌های واحد و SQLite را روی PHP 8.1 تا 8.4 اجرا می‌کند. گردش‌کار جداگانه، فایل رسمی سرور PocketMine-MP نسخه 5.44.3 و محیط رسمی PHP 8.4 مخصوص PMMP را دانلود و با SHA-256 بررسی می‌کند، سپس PHAR افزونه را می‌سازد و شروع سرور و فعال‌شدن BankSystem را می‌سنجد. این آزمون راه‌اندازی جای آزمایش تراکنش‌ها با کلاینت واقعی Bedrock را نمی‌گیرد.
