@@ -123,8 +123,20 @@ jobs:
           for attempt in $(seq 1 30); do
             if "$PMMP_PHP_BIN" -r '
               $db = new SQLite3($argv[1]);
-              $row = $db->querySingle("SELECT uuid, bank_balance FROM bank_accounts WHERE xuid = \\'1234567890123\\'", true);
-              $count = (int) $db->querySingle("SELECT COUNT(*) FROM bank_transactions WHERE action = \\'admin_give_bank\\' AND to_uuid = \\'offline-xuid:1234567890123\\'");
+              $statement = $db->prepare("SELECT uuid, bank_balance FROM bank_accounts WHERE xuid = :xuid");
+              $statement->bindValue(":xuid", "1234567890123", SQLITE3_TEXT);
+              $accountResult = $statement->execute();
+              $row = $accountResult->fetchArray(SQLITE3_ASSOC);
+              $statement->close();
+              $statement = $db->prepare("SELECT COUNT(*) FROM bank_transactions WHERE action = :action AND to_uuid = :uuid");
+              $statement->bindValue(":action", "admin_give_bank", SQLITE3_TEXT);
+              $statement->bindValue(":uuid", "offline-xuid:1234567890123", SQLITE3_TEXT);
+              $historyResult = $statement->execute();
+              $historyRow = $historyResult->fetchArray(SQLITE3_NUM);
+              $count = (int) $historyRow[0];
+              $statement->close();
+              $accountResult->finalize();
+              $historyResult->finalize();
               $db->close();
               exit($row !== false && $row["uuid"] === "offline-xuid:1234567890123" && (int) $row["bank_balance"] === 100 && $count === 1 ? 0 : 1);
             ' "$DB_PATH"; then
