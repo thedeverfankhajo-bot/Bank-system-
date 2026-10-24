@@ -52,7 +52,27 @@ jobs:
           DATA_DIR="$SERVER_DIR/data"
           PLUGIN_DIR="$SERVER_DIR/plugins"
           OUTPUT_LOG="$SERVER_DIR/console.log"
-          mkdir -p "$DATA_DIR" "$PLUGIN_DIR"
+          mkdir -p "$DATA_DIR" "$PLUGIN_DIR" "$DATA_DIR/players"
+
+          # Seed valid PocketMine player NBT for the offline-account integration test.
+          python3 - "$DATA_DIR/players/offsmoketarget.dat" <<'PY'
+          import struct
+          import sys
+          import zlib
+
+          tag_name = b"LastKnownXUID"
+          xuid = b"1234567890123"
+          nbt = (
+              b"\x0a\x00\x00"
+              + b"\x08"
+              + struct.pack(">H", len(tag_name)) + tag_name
+              + struct.pack(">H", len(xuid)) + xuid
+              + b"\x00"
+          )
+          with open(sys.argv[1], "wb") as player_data:
+              player_data.write(zlib.compress(nbt))
+          PY
+
           cp "$RUNNER_TEMP/PocketMine-MP.phar" "$SERVER_DIR/PocketMine-MP.phar"
           cp "$RUNNER_TEMP/BankSystem.phar" "$PLUGIN_DIR/BankSystem.phar"
           mkfifo "$SERVER_DIR/console-input"
@@ -95,6 +115,31 @@ jobs:
           fi
           test -f "$DATA_DIR/plugin_data/BankSystem/bank.sqlite3"
           grep -q "Enabling BankSystem v1.0.0" "$DATA_DIR/server.log"
+
+          # Exercise offline lookup, account creation, an admin mutation, and the ledger commit.
+          printf 'bank admin give OffSmokeTarget bank 1.00\n' >&3
+          OFFLINE_OK=0
+          DB_PATH="$DATA_DIR/plugin_data/BankSystem/bank.sqlite3"
+          for attempt in $(seq 1 30); do
+            if "$PMMP_PHP_BIN" -r '
+              $db = new SQLite3($argv[1]);
+              $row = $db->querySingle("SELECT uuid, bank_balance FROM bank_accounts WHERE xuid = \\'1234567890123\\'", true);
+              $count = (int) $db->querySingle("SELECT COUNT(*) FROM bank_transactions WHERE action = \\'admin_give_bank\\' AND to_uuid = \\'offline-xuid:1234567890123\\'");
+              $db->close();
+              exit($row !== false && $row["uuid"] === "offline-xuid:1234567890123" && (int) $row["bank_balance"] === 100 && $count === 1 ? 0 : 1);
+            ' "$DB_PATH"; then
+              OFFLINE_OK=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$OFFLINE_OK" -ne 1 ]; then
+            cat "$OUTPUT_LOG"
+            cat "$DATA_DIR/server.log" 2>/dev/null || true
+            echo "Offline XUID-backed account creation or ledger verification failed." >&2
+            exit 1
+          fi
+
           printf 'stop\n' >&3
           exec 3>&-
           wait "$SERVER_PID"
