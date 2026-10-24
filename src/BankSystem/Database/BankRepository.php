@@ -176,6 +176,7 @@ final class BankRepository{
                     created_at INTEGER NOT NULL
                 )'
             );
+            $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_accounts_name ON bank_accounts(player_name COLLATE NOCASE)');
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_from ON bank_transactions(from_uuid, id DESC)');
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_to ON bank_transactions(to_uuid, id DESC)');
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_actor ON bank_transactions(actor_uuid, id DESC)');
