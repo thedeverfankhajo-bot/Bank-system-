@@ -484,4 +484,106 @@ final class BankRepositoryTest extends TestCase{
         self::assertCount(0, $this->repository->getHistory('player-b', 10, 0));
     }
 
+
+    public function testOfflineAccountIsCreatedByXuidWithoutResettingExistingBalances() : void{
+        $account = $this->repository->ensureOfflineAccount('OfflineBlake', '1234567890123', 100, 200);
+
+        self::assertSame('offline-xuid:1234567890123', $account->uuid);
+        self::assertSame('1234567890123', $account->xuid);
+        self::assertSame(100, $account->walletBalance);
+        self::assertSame(200, $account->bankBalance);
+
+        $this->repository->adjustBalance(
+            'console', 'CONSOLE', $account->uuid, $account->playerName, 'wallet', 'give', 500, 500
+        );
+        $again = $this->repository->ensureOfflineAccount('OfflineBlake', '1234567890123', 9000, 9000);
+
+        self::assertSame($account->uuid, $again->uuid);
+        self::assertSame(600, $again->walletBalance);
+        self::assertSame(200, $again->bankBalance);
+    }
+
+    public function testOfflineAccountPromotionKeepsBalancesAndTransactionHistory() : void{
+        $offline = $this->repository->ensureOfflineAccount('OfflineBlake', '9876543210123', 0, 0);
+        $this->repository->move(
+            'player-a', 'Alex',
+            'player-a', 'Alex',
+            $offline->uuid, $offline->playerName,
+            'pay', 1250, 'wallet', 'wallet', PHP_INT_MAX
+        );
+
+        $this->repository->ensureAccountWithXuid(
+            'live-blake-uuid', 'BlakeRenamed', '9876543210123', 999999, 999999
+        );
+
+        $account = $this->repository->getAccount('live-blake-uuid');
+        self::assertNotNull($account);
+        self::assertSame('BlakeRenamed', $account->playerName);
+        self::assertSame('9876543210123', $account->xuid);
+        self::assertSame(1250, $account->walletBalance);
+        self::assertSame(0, $account->bankBalance);
+        self::assertNull($this->repository->getAccount($offline->uuid));
+
+        $history = $this->repository->getHistory('live-blake-uuid', 10, 0);
+        self::assertCount(1, $history);
+        self::assertSame('live-blake-uuid', $history[0]['to_uuid']);
+        self::assertSame('pay', $history[0]['action']);
+    }
+
+    public function testXuidConflictDoesNotMergeTwoDifferentAccounts() : void{
+        $offline = $this->repository->ensureOfflineAccount('OfflineBlake', '5555555555555', 1000, 0);
+        $this->repository->ensureAccount('different-live-uuid', 'SomeoneElse', 2000, 3000);
+
+        try{
+            $this->repository->ensureAccountWithXuid(
+                'different-live-uuid', 'SomeoneElse', '5555555555555', 0, 0
+            );
+            self::fail('Expected conflicting account identities to be rejected.');
+        }catch(BankException $exception){
+            self::assertStringContainsString('different saved bank accounts', $exception->getMessage());
+        }
+
+        self::assertSame(1000, $this->repository->getAccount($offline->uuid)?->walletBalance);
+        self::assertSame(2000, $this->repository->getAccount('different-live-uuid')?->walletBalance);
+        self::assertSame($offline->uuid, $this->repository->findAccountByXuid('5555555555555')?->uuid);
+    }
+
+    public function testVersionOneDatabaseMigratesToXuidSchemaWithoutLosingData() : void{
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-v1-migration-' . bin2hex(random_bytes(8)) . '.sqlite3';
+        $legacy = new \\SQLite3($path);
+        $legacy->exec(
+            'CREATE TABLE bank_accounts (
+                uuid TEXT PRIMARY KEY,
+                player_name TEXT NOT NULL,
+                wallet_balance INTEGER NOT NULL DEFAULT 0 CHECK(wallet_balance >= 0),
+                bank_balance INTEGER NOT NULL DEFAULT 0 CHECK(bank_balance >= 0),
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )'
+        );
+        $legacy->exec("INSERT INTO bank_accounts (uuid, player_name, wallet_balance, bank_balance, created_at, updated_at) VALUES ('legacy-uuid', 'LegacyPlayer', 1234, 5678, 10, 20)");
+        $legacy->exec('PRAGMA user_version = 1');
+        $legacy->close();
+
+        $migrated = new BankRepository($path);
+        try{
+            $account = $migrated->getAccount('legacy-uuid');
+            self::assertNotNull($account);
+            self::assertSame(1234, $account->walletBalance);
+            self::assertSame(5678, $account->bankBalance);
+            self::assertNull($account->xuid);
+
+            $property = new \\ReflectionProperty(BankRepository::class, 'database');
+            $database = $property->getValue($migrated);
+            self::assertInstanceOf(\\SQLite3::class, $database);
+            self::assertSame(2, (int) $database->querySingle('PRAGMA user_version'));
+            self::assertSame(1, (int) $database->querySingle("SELECT COUNT(*) FROM pragma_table_info('bank_accounts') WHERE name = 'xuid'"));
+        }finally{
+            $migrated->close();
+            @unlink($path);
+            @unlink($path . '-wal');
+            @unlink($path . '-shm');
+        }
+    }
+
 }
