@@ -550,7 +550,7 @@ final class BankRepositoryTest extends TestCase{
 
     public function testVersionOneDatabaseMigratesToXuidSchemaWithoutLosingData() : void{
         $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-v1-migration-' . bin2hex(random_bytes(8)) . '.sqlite3';
-        $legacy = new \\SQLite3($path);
+        $legacy = new \SQLite3($path);
         $legacy->exec(
             'CREATE TABLE bank_accounts (
                 uuid TEXT PRIMARY KEY,
@@ -573,9 +573,9 @@ final class BankRepositoryTest extends TestCase{
             self::assertSame(5678, $account->bankBalance);
             self::assertNull($account->xuid);
 
-            $property = new \\ReflectionProperty(BankRepository::class, 'database');
+            $property = new \ReflectionProperty(BankRepository::class, 'database');
             $database = $property->getValue($migrated);
-            self::assertInstanceOf(\\SQLite3::class, $database);
+            self::assertInstanceOf(\SQLite3::class, $database);
             self::assertSame(2, (int) $database->querySingle('PRAGMA user_version'));
             self::assertSame(1, (int) $database->querySingle("SELECT COUNT(*) FROM pragma_table_info('bank_accounts') WHERE name = 'xuid'"));
         }finally{
