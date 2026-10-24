@@ -25,19 +25,93 @@ jobs:
           "$RUNNER_TEMP/semgrep-venv/bin/pip" install --upgrade pip semgrep
           echo "$RUNNER_TEMP/semgrep-venv/bin" >> "$GITHUB_PATH"
 
-      - name: Analyze PHP source and tests
-        id: semgrep
+      - name: Stage PHP tests outside Semgrep default test-folder ignore
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import shutil
+
+          source = pathlib.Path("tests")
+          target = pathlib.Path(os.environ["RUNNER_TEMP"]) / "banksystem-test-php"
+          target.mkdir(parents=True, exist_ok=True)
+          mapping = {}
+          for path in sorted(source.rglob("*.php")):
+              relative = path.relative_to(source).as_posix()
+              staged_name = "tests__" + relative.replace("/", "__")
+              shutil.copy2(path, target / staged_name)
+              mapping[staged_name] = "tests/" + relative
+          if not mapping:
+              raise SystemExit("No PHP test files were staged for security analysis.")
+          pathlib.Path("semgrep-test-path-map.json").write_text(
+              json.dumps(mapping, indent=2) + "\n", encoding="utf-8"
+          )
+          print(f"Staged {len(mapping)} PHP test files for security analysis.")
+          PY
+
+      - name: Analyze PHP source
+        id: semgrep_source
         continue-on-error: true
         run: |
-          semgrep scan --config p/php --metrics=off --error --sarif --output semgrep.sarif src tests
+          semgrep scan --config p/php --metrics=off --error --sarif --output semgrep-source.sarif src
 
-      - name: Upload PHP security findings to GitHub code scanning
-        if: always() && hashFiles('semgrep.sarif') != ''
+      - name: Analyze PHP tests (including test files normally ignored by Semgrep)
+        id: semgrep_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/banksystem-test-php"
+          semgrep scan --config p/php --metrics=off --error --sarif --output "$GITHUB_WORKSPACE/semgrep-tests.sarif" .
+
+      - name: Map staged test findings back to repository paths
+        if: always() && hashFiles('semgrep-tests.sarif', 'semgrep-test-path-map.json') != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import posixpath
+          import urllib.parse
+
+          report_path = pathlib.Path("semgrep-tests.sarif")
+          mapping = json.loads(pathlib.Path("semgrep-test-path-map.json").read_text(encoding="utf-8"))
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+
+          def rewrite(value):
+              if isinstance(value, dict):
+                  location = value.get("artifactLocation")
+                  if isinstance(location, dict) and isinstance(location.get("uri"), str):
+                      uri = urllib.parse.unquote(urllib.parse.urlparse(location["uri"]).path)
+                      basename = posixpath.basename(uri)
+                      if basename in mapping:
+                          location["uri"] = mapping[basename]
+                          location.pop("uriBaseId", None)
+                  for child in value.values():
+                      rewrite(child)
+              elif isinstance(value, list):
+                  for child in value:
+                      rewrite(child)
+
+          rewrite(report)
+          report_path.write_text(json.dumps(report, ensure_ascii=False) + "\n", encoding="utf-8")
+          print(f"Mapped test findings to {len(mapping)} original repository paths.")
+          PY
+
+      - name: Upload PHP source findings to GitHub code scanning
+        if: always() && hashFiles('semgrep-source.sarif') != ''
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
-          sarif_file: semgrep.sarif
-          category: semgrep-php
+          sarif_file: semgrep-source.sarif
+          category: semgrep-php-source
 
-      - name: Fail the job if PHP analysis did not pass
-        if: steps.semgrep.outcome == 'failure'
+      - name: Upload PHP test findings to GitHub code scanning
+        if: always() && hashFiles('semgrep-tests.sarif') != ''
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          sarif_file: semgrep-tests.sarif
+          category: semgrep-php-tests
+
+      - name: Fail the job if either PHP scan found a blocking issue
+        if: steps.semgrep_source.outcome == 'failure' || steps.semgrep_tests.outcome == 'failure'
         run: exit 1
