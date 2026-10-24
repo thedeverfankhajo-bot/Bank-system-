@@ -793,7 +793,8 @@ final class BankCommand{
     }
 
     /**
-     * Prefers a live player's UUID; otherwise resolves only a previously saved account.
+     * Prefers a live player's UUID; otherwise resolves a saved account or verified
+     * PocketMine offline identity from its saved XUID metadata.
      */
     private function resolveAccountByName(string $name) : ?BankAccount{
         $onlinePlayer = $this->plugin->getServer()->getPlayerExact($name);
@@ -818,7 +819,7 @@ final class BankCommand{
         if($account === null){
             $this->message(
                 $sender,
-                'No saved bank account was found for ' . $name . '. The player must join at least once while BankSystem is enabled before offline banking can be used.'
+                'No saved or verifiable offline identity was found for ' . $name . '. Offline banking requires a saved PocketMine XUID or a previously registered bank account.'
             );
             return null;
         }
