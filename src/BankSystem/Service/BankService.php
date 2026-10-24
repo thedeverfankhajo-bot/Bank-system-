@@ -92,13 +92,14 @@ final class BankService{
         $xuid = $this->savedXuidForName($playerName);
         if($accounts !== []){
             $account = $accounts[0];
-            if($xuid !== null){
-                if($account->xuid === null){
-                    throw new BankException('PocketMine has an offline identity for that name, but this saved bank account has not been linked to it yet. The player must join once after this BankSystem update before offline banking can safely use the account.');
-                }
-                if($account->xuid !== $xuid){
-                    throw new BankException('That name belongs to a different saved offline identity. No money was moved.');
-                }
+            if($xuid === null){
+                throw new BankException('PocketMine has no saved XUID for that offline name, so the account owner cannot be verified safely. The player must join with an authenticated account, or a caller must use the account UUID directly.');
+            }
+            if($account->xuid === null){
+                throw new BankException('PocketMine has an offline identity for that name, but this saved bank account has not been linked to it yet. The player must join once after this BankSystem update before offline banking can safely use the account.');
+            }
+            if($account->xuid !== $xuid){
+                throw new BankException('That name belongs to a different saved offline identity. No money was moved.');
             }
             return $account;
         }
@@ -146,7 +147,10 @@ final class BankService{
         string $toName,
         int $amountMinor
     ) : void{
-        $target = $this->findAccountByName($toName);
+        $onlineTarget = $this->plugin->getServer()->getPlayerExact($toName);
+        $target = $onlineTarget !== null
+            ? $this->getAccount($onlineTarget->getUniqueId()->toString(), $onlineTarget->getName())
+            : $this->findAccountByName($toName);
         if($target === null){
             throw new BankException('No saved or verifiable offline account exists for that player. Offline account creation requires PocketMine saved XUID data; otherwise the player must join the server first.');
         }
