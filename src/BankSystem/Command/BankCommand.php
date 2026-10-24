@@ -619,6 +619,13 @@ final class BankCommand{
             return;
         }
 
+        // Validate user input before resolving the target: an offline lookup may
+        // bootstrap a persisted account from PocketMine's saved XUID metadata.
+        $amount = $this->parseAmount($sender, $args[2]);
+        if($amount === null){
+            return;
+        }
+
         $target = $this->findBankAccount($sender, $args[1]);
         if($target === null){
             return;
@@ -626,11 +633,6 @@ final class BankCommand{
         $sourceUuid = $player->getUniqueId()->toString();
         if($target->uuid === $sourceUuid){
             $this->message($sender, 'You cannot pay yourself.');
-            return;
-        }
-
-        $amount = $this->parseAmount($sender, $args[2]);
-        if($amount === null){
             return;
         }
 
@@ -736,12 +738,14 @@ final class BankCommand{
             return;
         }
 
-        $target = $this->findBankAccount($sender, $args[1]);
-        if($target === null){
-            return;
-        }
+        // Reject malformed amounts before the offline lookup can create an account.
         $amount = $this->parseAmount($sender, $args[3], $mode === 'set');
         if($amount === null){
+            return;
+        }
+
+        $target = $this->findBankAccount($sender, $args[1]);
+        if($target === null){
             return;
         }
 
