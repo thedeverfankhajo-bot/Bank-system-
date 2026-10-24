@@ -20,7 +20,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 - Owner-only SQLite database and existing WAL/SHM file permissions on POSIX systems; Windows relies on filesystem ACLs.
 - A public `BankService` API and `BankTransactionEvent` for other plugins.
 - Configurable currency symbol and maximum transaction amount.
-- GitHub Actions checks PHP 8.1–8.3, runs money and SQLite transaction tests, audits resolved Composer dependencies, and validates YAML.
+- GitHub Actions checks PHP 8.1–8.4, runs money and SQLite transaction tests, audits resolved Composer dependencies, and validates YAML.
 
 ## Requirements
 
