@@ -149,6 +149,9 @@ final class BankService{
         string $toName,
         int $amountMinor
     ) : void{
+        // Invalid API calls must fail before a name lookup can create an offline account.
+        $this->guardTransactionAmount($amountMinor);
+
         $onlineTarget = $this->plugin->getServer()->getPlayerExact($toName);
         $target = $onlineTarget !== null
             ? $this->getAccount($onlineTarget->getUniqueId()->toString(), $onlineTarget->getName())
