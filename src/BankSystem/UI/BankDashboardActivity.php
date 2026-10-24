@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace BankSystem\UI;
 
+use BankSystem\Support\BedrockText;
+
 final class BankDashboardActivity{
     private function __construct(){
     }
@@ -28,11 +30,11 @@ final class BankDashboardActivity{
                 continue;
             }
 
-            $action = strtolower((string) $row['action']);
+            $action = strtolower(BedrockText::sanitize((string) $row['action']));
             $fromUuid = (string) ($row['from_uuid'] ?? '');
             $toUuid = (string) ($row['to_uuid'] ?? '');
-            $fromName = self::safeName((string) ($row['from_name'] ?? 'Unknown'));
-            $toName = self::safeName((string) ($row['to_name'] ?? 'Unknown'));
+            $fromName = BedrockText::sanitize((string) ($row['from_name'] ?? 'Unknown'));
+            $toName = BedrockText::sanitize((string) ($row['to_name'] ?? 'Unknown'));
             [$color, $label] = self::describeAction($action, $playerUuid, $fromUuid, $fromName, $toName);
 
             $id = isset($row['id']) && is_numeric($row['id']) ? (int) $row['id'] : 0;
@@ -75,10 +77,4 @@ final class BankDashboardActivity{
         };
     }
 
-    private static function safeName(string $name) : string{
-        // Strip formatting code pairs, not just the section sign (which would leave
-        // the code letter visible), and remove line breaks that could spoof entries.
-        $name = preg_replace('/§[0-9a-fk-or]/iu', '', $name) ?? $name;
-        return str_replace(["\r", "\n"], '', $name);
-    }
 }

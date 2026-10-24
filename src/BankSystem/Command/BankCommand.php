@@ -8,6 +8,7 @@ use BankSystem\BankAccount;
 use BankSystem\BankException;
 use BankSystem\Main;
 use BankSystem\Service\BankService;
+use BankSystem\Support\BedrockText;
 use BankSystem\Support\Money;
 use BankSystem\Support\PlayerIdentity;
 use BankSystem\Support\TransactionCooldown;
@@ -237,7 +238,7 @@ final class BankCommand{
                 : "§7Recent account activity\n§8Page " . $historyPage->page . "\n§8------------------------------";
 
             foreach($entries as $row){
-                $action = (string) $row['action'];
+                $action = BedrockText::sanitize((string) $row['action']);
                 $actionColor = match($action){
                     'deposit' => '§a',
                     'withdraw' => '§c',
@@ -247,7 +248,7 @@ final class BankCommand{
                 $content .= "\n\n§8#" . (int) $row['id'] . ' ' .
                     $actionColor . strtoupper($action) . ' §f' .
                     $this->formatMoney((int) $row['amount_minor']) .
-                    "\n§7" . (string) $row['from_name'] . ' §8> §7' . (string) $row['to_name'] .
+                    "\n§7" . BedrockText::sanitize((string) $row['from_name']) . ' §8> §7' . BedrockText::sanitize((string) $row['to_name']) .
                     "\n§8" . date('Y-m-d H:i', (int) $row['created_at']);
             }
 
@@ -289,7 +290,7 @@ final class BankCommand{
                     2 => '§c§l',
                     default => '§e'
                 };
-                $content .= "\n\n" . $rankColor . '#' . ($index + 1) . ' §f' . $account->playerName .
+                $content .= "\n\n" . $rankColor . '#' . ($index + 1) . ' §f' . BedrockText::sanitize($account->playerName) .
                     "\n§7BANK SAVINGS  §a" . $this->formatMoney($account->bankBalance);
             }
             $this->showPanelInformation(
@@ -652,7 +653,7 @@ final class BankCommand{
             foreach($accounts as $index => $account){
                 $this->message(
                     $sender,
-                    '#' . ($index + 1) . ' ' . $account->playerName . ': ' . $this->formatMoney($account->bankBalance)
+                    '#' . ($index + 1) . ' ' . BedrockText::sanitize($account->playerName) . ': ' . $this->formatMoney($account->bankBalance)
                 );
             }
         }catch(Throwable $exception){
@@ -691,9 +692,9 @@ final class BankCommand{
 
             $this->message($sender, 'Bank history - page ' . $page . ':');
             foreach($rows as $row){
-                $line = '#' . $row['id'] . ' ' . strtoupper((string) $row['action']) . ' ' .
+                $line = '#' . $row['id'] . ' ' . strtoupper(BedrockText::sanitize((string) $row['action'])) . ' ' .
                     $this->formatMoney((int) $row['amount_minor']) . ' (' .
-                    (string) $row['from_name'] . ' -> ' . (string) $row['to_name'] . ') ' .
+                    BedrockText::sanitize((string) $row['from_name']) . ' -> ' . BedrockText::sanitize((string) $row['to_name']) . ') ' .
                     date('Y-m-d H:i', (int) $row['created_at']);
                 $this->message($sender, $line);
             }
@@ -762,7 +763,7 @@ final class BankCommand{
     }
 
     private function showBalance(CommandSender $sender, BankAccount $account) : void{
-        $this->message($sender, 'Balance for ' . $account->playerName . ':');
+        $this->message($sender, 'Balance for ' . BedrockText::sanitize($account->playerName) . ':');
         $this->message($sender, 'Wallet: ' . $this->formatMoney($account->walletBalance));
         $this->message($sender, 'Bank: ' . $this->formatMoney($account->bankBalance));
         $this->message($sender, 'Total: ' . $this->formatMoney($account->totalBalance()));

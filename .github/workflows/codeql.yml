@@ -42,7 +42,7 @@ jobs:
           # Private repositories need GitHub Code Security enabled to upload scan alerts.
           # Set CODEQL_UPLOAD_RESULTS to the string "true" only after Code Security is enabled.
           # Otherwise, keep SARIF as a workflow artifact.
-          upload: ${{ vars.CODEQL_UPLOAD_RESULTS == 'true' && 'always' || 'never' }}
+          upload: always
 
       - name: Archive CodeQL SARIF results
         if: always()
