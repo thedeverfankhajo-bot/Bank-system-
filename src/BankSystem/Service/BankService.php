@@ -38,6 +38,20 @@ final class BankService{
     }
 
     /**
+     * Looks up an existing account by its stable UUID without creating it.
+     *
+     * This is the safe alternative when a last-known player name is ambiguous.
+     */
+    public function findAccountByUuid(string $uuid) : ?BankAccount{
+        $uuid = trim($uuid);
+        if($uuid === ''){
+            throw new BankException('A valid player UUID is required.');
+        }
+
+        return $this->repository->getAccount($uuid);
+    }
+
+    /**
      * Finds an existing account by its last-known player name.
      *
      * Offline names are not an identity by themselves, so this never creates an
@@ -52,7 +66,7 @@ final class BankService{
 
         $accounts = $this->repository->findAccountsByName($playerName);
         if(count($accounts) > 1){
-            throw new BankException('More than one bank account matches that name. Use a UUID-based lookup to avoid ambiguity.');
+            throw new BankException('More than one bank account matches that name. Use findAccountByUuid() to select a specific account safely.');
         }
 
         return $accounts[0] ?? null;
