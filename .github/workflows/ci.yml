@@ -28,7 +28,11 @@ jobs:
           coverage: none
 
       - name: Validate Composer manifest
-        run: COMPOSER_ROOT_VERSION=1.0.2 composer validate --strict --no-check-publish --no-check-all
+        run: |
+        COMPOSER_ROOT_VERSION="$(ruby -e 'require "yaml"; puts YAML.load_file("plugin.yml")["version"]')"
+        export COMPOSER_ROOT_VERSION
+        printf 'Composer root version: %s\n' "$COMPOSER_ROOT_VERSION"
+        composer validate --strict --no-check-publish --no-check-all
 
       - name: Install development dependencies
         run: composer install --no-interaction --prefer-dist
