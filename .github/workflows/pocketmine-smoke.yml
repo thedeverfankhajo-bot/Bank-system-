@@ -127,16 +127,16 @@ jobs:
               $statement->bindValue(":xuid", "1234567890123", SQLITE3_TEXT);
               $accountResult = $statement->execute();
               $row = $accountResult->fetchArray(SQLITE3_ASSOC);
+              $accountResult->finalize();
               $statement->close();
               $statement = $db->prepare("SELECT COUNT(*) FROM bank_transactions WHERE action = :action AND to_uuid = :uuid");
               $statement->bindValue(":action", "admin_give_bank", SQLITE3_TEXT);
               $statement->bindValue(":uuid", "offline-xuid:1234567890123", SQLITE3_TEXT);
               $historyResult = $statement->execute();
               $historyRow = $historyResult->fetchArray(SQLITE3_NUM);
+              $historyResult->finalize();
               $count = (int) $historyRow[0];
               $statement->close();
-              $accountResult->finalize();
-              $historyResult->finalize();
               $db->close();
               exit($row !== false && $row["uuid"] === "offline-xuid:1234567890123" && (int) $row["bank_balance"] === 100 && $count === 1 ? 0 : 1);
             ' "$DB_PATH"; then
