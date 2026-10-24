@@ -10,6 +10,7 @@ use BankSystem\Database\BankRepository;
 use BankSystem\Event\BankTransactionEvent;
 use BankSystem\Main;
 use BankSystem\Support\Money;
+use pocketmine\player\Player;
 use Throwable;
 
 final class BankService{
@@ -38,6 +39,25 @@ final class BankService{
     }
 
     /**
+     * Registers a live player and links any previously created XUID-backed offline account.
+     * This is called on join so the player returns to the exact same balance and history.
+     */
+    public function registerOnlineAccount(string $uuid, string $playerName, string $xuid) : BankAccount{
+        if(trim($uuid) === '' || trim($playerName) === ''){
+            throw new BankException('A valid player UUID and name are required.');
+        }
+
+        $initialWallet = $this->configuredAmount('balances.initial-wallet', '0.00');
+        $initialBank = $this->configuredAmount('balances.initial-bank', '0.00');
+        $this->repository->ensureAccountWithXuid($uuid, $playerName, $xuid, $initialWallet, $initialBank);
+        $account = $this->repository->getAccount($uuid);
+        if($account === null){
+            throw new BankException('Could not load the registered bank account.');
+        }
+        return $account;
+    }
+
+    /**
      * Looks up an existing account by its stable UUID without creating it.
      *
      * This is the safe alternative when a last-known player name is ambiguous.
@@ -52,11 +72,11 @@ final class BankService{
     }
 
     /**
-     * Finds an existing account by its last-known player name.
+     * Finds an account by last-known name, or bootstraps it from PocketMine's saved XUID.
      *
-     * Offline names are not an identity by themselves, so this never creates an
-     * account or invents a UUID. If historical accounts share a name, callers must
-     * use an explicit UUID rather than risking a payment to the wrong account.
+     * A display name alone is never used to create an account or invent an identity.
+     * If PocketMine has a saved Xbox XUID, that stable identifier is used for the
+     * offline account and later reconciled with the live UUID on join.
      */
     public function findAccountByName(string $playerName) : ?BankAccount{
         $playerName = trim($playerName);
@@ -69,25 +89,51 @@ final class BankService{
             throw new BankException('More than one bank account matches that name. Use findAccountByUuid() to select a specific account safely.');
         }
 
-        return $accounts[0] ?? null;
+        $xuid = $this->savedXuidForName($playerName);
+        if($accounts !== []){
+            $account = $accounts[0];
+            if($xuid !== null){
+                if($account->xuid === null){
+                    throw new BankException('PocketMine has an offline identity for that name, but this saved bank account has not been linked to it yet. The player must join once after this BankSystem update before offline banking can safely use the account.');
+                }
+                if($account->xuid !== $xuid){
+                    throw new BankException('That name belongs to a different saved offline identity. No money was moved.');
+                }
+            }
+            return $account;
+        }
+
+        if($xuid === null){
+            return null;
+        }
+
+        return $this->repository->ensureOfflineAccount(
+            $playerName,
+            $xuid,
+            $this->configuredAmount('balances.initial-wallet', '0.00'),
+            $this->configuredAmount('balances.initial-bank', '0.00')
+        );
     }
 
     /**
-     * Transfers to a known account by player name, including when its owner is offline.
-     * The recipient must already have a persisted BankSystem account.
+     * Reads only PocketMine's own player metadata. XUIDs are accepted only when
+     * present in saved player data; no XUID or UUID is fabricated from a name.
      */
-    public function transferToName(
-        string $fromUuid,
-        string $fromName,
-        string $toName,
-        int $amountMinor
-    ) : void{
-        $target = $this->findAccountByName($toName);
-        if($target === null){
-            throw new BankException('No saved bank account exists for that player. They must join at least once while BankSystem is enabled before offline transfers can be used.');
-        }
+    private function savedXuidForName(string $playerName) : ?string{
+        try{
+            $data = $this->plugin->getServer()->getOfflinePlayerData($playerName);
+            if($data === null || !method_exists($data, 'getString')){
+                return null;
+            }
 
-        $this->transfer($fromUuid, $fromName, $target->uuid, $target->playerName, $amountMinor);
+            $xuid = $data->getString(Player::TAG_LAST_KNOWN_XUID, '');
+            return $xuid !== '' && preg_match('/^[0-9]+$/D', $xuid) === 1 ? $xuid : null;
+        }catch(Throwable $exception){
+            $this->plugin->getLogger()->warning(
+                'Could not inspect saved offline identity for ' . $playerName . ': ' . $exception->getMessage()
+            );
+            return null;
+        }
     }
 
     public function deposit(string $uuid, string $playerName, int $amountMinor) : void{
