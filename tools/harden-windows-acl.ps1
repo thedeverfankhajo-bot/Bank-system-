@@ -22,8 +22,7 @@ if (-not (Test-Path -LiteralPath $icacls -PathType Leaf)) {
 
 # Resolve the service identity up front, so a typo cannot lock the server out.
 try {
-    $serverSid = ([System.Security.Principal.NTAccount]::new($ServerAccount)).
-        Translate([System.Security.Principal.SecurityIdentifier]).Value
+    $serverSid = ([System.Security.Principal.NTAccount]::new($ServerAccount)).Translate([System.Security.Principal.SecurityIdentifier]).Value
 } catch {
     throw "Windows could not resolve the PocketMine service account '$ServerAccount'. Supply the exact account used by the service."
 }

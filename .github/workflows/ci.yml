@@ -44,14 +44,14 @@ jobs:
 
       - name: Validate YAML files
         run: |
-          ruby -e 'require "yaml"; ARGV.each { |file| YAML.load_file(file, aliases: true); puts "#{file}: OK" }' plugin.yml resources/config.yml .github/workflows/ci.yml .github/workflows/codeql.yml .github/dependabot.yml .github/workflows/pocketmine-smoke.yml
+          ruby -e 'require "yaml"; ARGV.each { |file| YAML.load_file(file, aliases: true); puts "#{file}: OK" }' plugin.yml resources/config.yml .github/workflows/ci.yml .github/workflows/codeql.yml .github/dependabot.yml .github/workflows/pocketmine-smoke.yml .github/workflows/php-security.yml
 
   windows-acl-script:
     name: Validate Windows ACL script syntax
     runs-on: windows-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@3d3c42e9b
+        uses: actions/checkout@3d3c42e9b5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Parse PowerShell script
         shell: pwsh
         run: |
