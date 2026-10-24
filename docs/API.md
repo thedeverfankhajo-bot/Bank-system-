@@ -27,6 +27,26 @@ BankSystem exposes its service through the main plugin class. API calls use inte
 
 The bucket value must be wallet or bank. API callers should catch BankException for expected rule failures, such as insufficient funds, invalid balances, self-payments, and changes above the configured transaction cap. The cap also applies to the absolute difference created by `setBalance`: it limits the change from the current balance, not the final balance value. This limit is checked inside the SQLite write transaction against the current value to prevent a stale pre-check from bypassing the cap. Database/runtime failures should be handled separately and must not be treated as successful payments.
 
+## Offline account examples
+
+An offline recipient must already have a BankSystem account saved from a previous join. Resolve by the last-known name or use `transferToName()`; this never fabricates an identity from a name. Unknown recipients and names that match multiple historical accounts are rejected with `BankException`.
+
+```php
+try{
+    $bank->transferToName(
+        $player->getUniqueId()->toString(),
+        $player->getName(),
+        'KnownOfflinePlayer',
+        1250 // 12.50 in minor units
+    );
+}catch(\\BankSystem\\BankException $exception){
+    // Handle insufficient wallet funds, limits, missing or ambiguous account.
+    $player->sendMessage('Transfer failed: ' . $exception->getMessage());
+}
+```
+
+For an administrative operation against a known offline account, resolve the account first and pass its stored UUID and last-known name to `give()`, `take()`, or `setBalance()`. Do not create a UUID from a username.
+
 ## Transaction event
 
 A successful database mutation dispatches BankTransactionEvent after the SQLite transaction has committed. The event exposes transaction ID, actor, source and destination UUIDs, action, amount, bucket names, balance-before/after values, and creation time. It is informational and cannot cancel an already committed transaction.
