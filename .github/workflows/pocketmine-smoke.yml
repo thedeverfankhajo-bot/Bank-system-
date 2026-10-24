@@ -26,14 +26,14 @@ jobs:
             "https://github.com/pmmp/PocketMine-MP/releases/download/5.44.3/PocketMine-MP.phar"
           echo "$PMMP_PHAR_SHA256  $RUNNER_TEMP/PocketMine-MP.phar" | sha256sum --check
 
-      - name: Download and verify PocketMine PHP 8.4 runtime
+      - name: Download and verify the recommended PocketMine PHP 8.2 runtime
         env:
-          PMMP_PHP_SHA256: 5b9a1a8f103f7b91670336495b531d9a75c05cca3bd544251a7b63d2124bcc6c
+          PMMP_PHP_SHA256: 000fc605878d24be3d6faa6991c0d3a39ae90a0f9ff24d9f4e4722ef823082fc
         run: |
           mkdir -p "$RUNNER_TEMP/pmmp-php"
           curl --fail --location --retry 3 --retry-delay 2 \
             --output "$RUNNER_TEMP/pmmp-php.tar.gz" \
-            "https://github.com/pmmp/PHP-Binaries/releases/download/pm5-php-8.4-latest/PHP-8.4-Linux-x86_64-PM5.tar.gz"
+            "https://github.com/pmmp/PHP-Binaries/releases/download/pm5-latest/PHP-8.2-Linux-x86_64-PM5.tar.gz"
           echo "$PMMP_PHP_SHA256  $RUNNER_TEMP/pmmp-php.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/pmmp-php.tar.gz" -C "$RUNNER_TEMP/pmmp-php"
           PHP_BIN="$(find "$RUNNER_TEMP/pmmp-php" -type f -path '*/bin/php' -executable -print -quit)"
