@@ -52,6 +52,20 @@ final class BankRepositoryTest extends TestCase{
         ));
     }
 
+    public function testFindAccountsByNameReturnsNoMatchForUnknownOfflinePlayer() : void{
+        self::assertSame([], $this->repository->findAccountsByName('NotRegistered'));
+    }
+
+    public function testNameLookupIndexExistsForCaseInsensitiveSearch() : void{
+        $property = new \\ReflectionProperty(BankRepository::class, 'database');
+        $database = $property->getValue($this->repository);
+        self::assertInstanceOf(\\SQLite3::class, $database);
+        self::assertSame(
+            1,
+            $database->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_bank_accounts_name'")
+        );
+    }
+
     public function testKnownOfflineAccountCanBeUsedAsTransferRecipient() : void{
         // A disconnected player is represented by their persisted account and stable UUID.
         $offlineTarget = $this->repository->findAccountsByName('blAKE')[0];
