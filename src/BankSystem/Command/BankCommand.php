@@ -416,6 +416,11 @@ final class BankCommand{
             return;
         }
 
+        if(!$this->validateTransactionAmount($player, $amountMinor)){
+            $this->openPanel($player);
+            return;
+        }
+
         $target = $this->findBankAccount($player, $targetName);
         if($target === null){
             $this->openPanel($player);
@@ -483,6 +488,11 @@ final class BankCommand{
             $this->message($player, $allowZero
                 ? 'Invalid amount. Use 0 or a non-negative number with at most two decimal places.'
                 : 'Invalid amount. Use a positive number with at most two decimal places.');
+            $this->openPanel($player);
+            return;
+        }
+
+        if($mode !== 'set' && !$this->validateTransactionAmount($player, $amountMinor)){
             $this->openPanel($player);
             return;
         }
@@ -626,6 +636,11 @@ final class BankCommand{
             return;
         }
 
+        // Reject amounts above the configured cap before an offline lookup can create an account.
+        if(!$this->validateTransactionAmount($sender, $amount)){
+            return;
+        }
+
         $target = $this->findBankAccount($sender, $args[1]);
         if($target === null){
             return;
@@ -744,6 +759,12 @@ final class BankCommand{
             return;
         }
 
+        // Give/take use a fixed delta, so their cap can be checked without resolving a target.
+        // Set is different: its cap applies to the delta from the current saved balance.
+        if($mode !== 'set' && !$this->validateTransactionAmount($sender, $amount)){
+            return;
+        }
+
         $target = $this->findBankAccount($sender, $args[1]);
         if($target === null){
             return;
@@ -848,6 +869,23 @@ final class BankCommand{
             return null;
         }
         return $amount;
+    }
+
+    /**
+     * Applies the service-level amount cap before resolving an offline target.
+     */
+    private function validateTransactionAmount(CommandSender $sender, int $amountMinor) : bool{
+        try{
+            $this->service->validateTransactionAmount($amountMinor);
+            return true;
+        }catch(BankException $exception){
+            $this->message($sender, $exception->getMessage());
+            return false;
+        }catch(Throwable $exception){
+            $this->logReadError('transaction amount validation', $exception);
+            $this->message($sender, 'Could not validate that amount. Check the server log.');
+            return false;
+        }
     }
 
     private function runTransaction(CommandSender $sender, callable $operation) : void{

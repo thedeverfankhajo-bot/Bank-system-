@@ -64,6 +64,7 @@ jobs:
           fixtures = {
               "offsmoketarget.dat": b"1234567890123",
               "badamounttarget.dat": b"9876543210123",
+              "limitamounttarget.dat": b"6677889900123",
           }
           for filename, xuid in fixtures.items():
               tag_name = b"LastKnownXUID"
@@ -124,10 +125,12 @@ jobs:
           # Exercise XUID-backed account creation and reject malformed admin amounts without side effects.
           printf 'bank admin give OffSmokeTarget bank 1.00\n' >&3
           printf 'bank admin give BadAmountTarget bank not-a-number\n' >&3
+          printf 'bank admin give LimitAmountTarget bank 1000000.01\n' >&3
           OFFLINE_OK=0
           DB_PATH="$DATA_DIR/plugin_data/BankSystem/bank.sqlite3"
           for attempt in $(seq 1 30); do
             if grep -q "Invalid amount. Use a positive number" "$OUTPUT_LOG" 2>/dev/null && \
+              grep -q "The amount exceeds the configured transaction limit" "$OUTPUT_LOG" 2>/dev/null && \
               "$PMMP_PHP_BIN" -r '
                 $db = new SQLite3($argv[1]);
                 $statement = $db->prepare("SELECT uuid, bank_balance FROM bank_accounts WHERE xuid = :xuid");
@@ -153,6 +156,14 @@ jobs:
                 $invalidResult->finalize();
                 $invalidAccountCount = (int) $invalidRow[0];
                 $statement->close();
+
+                $statement = $db->prepare("SELECT COUNT(*) FROM bank_accounts WHERE xuid = :xuid");
+                $statement->bindValue(":xuid", "6677889900123", SQLITE3_TEXT);
+                $limitResult = $statement->execute();
+                $limitRow = $limitResult->fetchArray(SQLITE3_NUM);
+                $limitResult->finalize();
+                $limitAccountCount = (int) $limitRow[0];
+                $statement->close();
                 $db->close();
 
                 exit(
@@ -160,7 +171,8 @@ jobs:
                   $row["uuid"] === "offline-xuid:1234567890123" &&
                   (int) $row["bank_balance"] === 100 &&
                   $count === 1 &&
-                  $invalidAccountCount === 0 ? 0 : 1
+                  $invalidAccountCount === 0 &&
+                  $limitAccountCount === 0 ? 0 : 1
                 );
               ' "$DB_PATH"; then
               OFFLINE_OK=1
@@ -171,7 +183,7 @@ jobs:
           if [ "$OFFLINE_OK" -ne 1 ]; then
             cat "$OUTPUT_LOG"
             cat "$DATA_DIR/server.log" 2>/dev/null || true
-            echo "Offline account validation or malformed-amount no-side-effect check failed." >&2
+            echo "Offline account validation or invalid-amount/configured-limit no-side-effect check failed." >&2
             exit 1
           fi
 

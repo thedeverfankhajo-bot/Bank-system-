@@ -16,6 +16,7 @@ BankSystem exposes its service through the main plugin class. API calls use inte
 - getAccount(string $uuid, string $playerName): BankAccount
 - findAccountByUuid(string $uuid): ?BankAccount — reads an existing account by stable UUID without creating it
 - findAccountByName(string $playerName): ?BankAccount — resolves an existing account or creates a verifiable offline account from PocketMine's saved XUID; throws if ambiguous or conflicting
+- validateTransactionAmount(int $amountMinor): void — checks positivity and the configured per-transaction cap before resolving an offline recipient
 - transferToName(string $fromUuid, string $fromName, string $toName, int $amountMinor): void — sends to a known account even when its owner is offline
 - deposit(string $uuid, string $playerName, int $amountMinor): void
 - withdraw(string $uuid, string $playerName, int $amountMinor): void
@@ -26,7 +27,7 @@ BankSystem exposes its service through the main plugin class. API calls use inte
 - getTopAccounts(int $limit = 10): list of BankAccount
 - getHistory(string $uuid, int $limit = 10, int $offset = 0): list of transaction records
 
-The bucket value must be wallet or bank. API callers should catch BankException for expected rule failures, such as insufficient funds, invalid balances, self-payments, and changes above the configured transaction cap. The cap also applies to the absolute difference created by `setBalance`: it limits the change from the current balance, not the final balance value. This limit is checked inside the SQLite write transaction against the current value to prevent a stale pre-check from bypassing the cap. Database/runtime failures should be handled separately and must not be treated as successful payments.
+The bucket value must be wallet or bank. Call `validateTransactionAmount($amountMinor)` before custom recipient lookups that may create a verified XUID-backed offline account; the money-changing methods enforce the cap themselves as well. API callers should catch BankException for expected rule failures, such as insufficient funds, invalid balances, self-payments, and changes above the configured transaction cap. The cap also applies to the absolute difference created by `setBalance`: it limits the change from the current balance, not the final balance value. This limit is checked inside the SQLite write transaction against the current value to prevent a stale pre-check from bypassing the cap. Database/runtime failures should be handled separately and must not be treated as successful payments.
 
 ## Offline account examples
 

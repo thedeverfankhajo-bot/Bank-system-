@@ -277,6 +277,13 @@ final class BankService{
         return $this->repository->getHistory($uuid, $limit, $offset);
     }
 
+    /**
+     * Validates an amount before a name lookup can create an XUID-backed offline account.
+     */
+    public function validateTransactionAmount(int $amountMinor) : void{
+        $this->guardTransactionAmount($amountMinor);
+    }
+
     private function guardTransactionAmount(int $amountMinor) : void{
         if($amountMinor <= 0){
             throw new BankException('The amount must be greater than zero.');
