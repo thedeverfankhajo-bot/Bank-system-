@@ -80,8 +80,10 @@ final class BankService{
      */
     public function findAccountByName(string $playerName) : ?BankAccount{
         $playerName = trim($playerName);
-        if($playerName === '' || strlen($playerName) > 64){
-            throw new BankException('A valid player name is required.');
+        // getOfflinePlayerData() uses the name to construct a file path. Apply
+        // PocketMine's own username validation before touching player-data storage.
+        if(!Player::isValidUserName($playerName)){
+            throw new BankException('A valid PocketMine player name is required.');
         }
 
         $accounts = $this->repository->findAccountsByName($playerName);
