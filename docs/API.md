@@ -39,7 +39,7 @@ try{
         'KnownOfflinePlayer',
         1250 // 12.50 in minor units
     );
-}catch(\\BankSystem\\BankException $exception){
+}catch(\BankSystem\BankException $exception){
     // Handle insufficient wallet funds, limits, missing or ambiguous account.
     $player->sendMessage('Transfer failed: ' . $exception->getMessage());
 }
