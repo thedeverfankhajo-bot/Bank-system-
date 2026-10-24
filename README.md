@@ -74,7 +74,7 @@ if($plugin instanceof Main){
 }
 ```
 
-The API creates accounts on demand. Methods throw `BankException` for expected business-rule failures; callers should handle it. Database failures are not converted into successful transactions. Successful mutations dispatch `BankTransactionEvent` after the database commit. Event listeners should not assume an event can cancel a committed transaction.
+The `getAccount($uuid, $name)` API creates an account if it does not exist; use `findAccountByUuid($uuid)` for a read-only lookup. Methods throw `BankException` for expected business-rule failures; callers should handle it. Database failures are not converted into successful transactions. Successful mutations dispatch `BankTransactionEvent` after the database commit. Event listeners should not assume an event can cancel a committed transaction.
 
 ## Development and checks
 
