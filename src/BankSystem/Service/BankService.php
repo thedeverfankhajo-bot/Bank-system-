@@ -136,6 +136,24 @@ final class BankService{
         }
     }
 
+    /**
+     * Transfers to a known account by player name, including a verified offline XUID account.
+     * The recipient may be online or offline; no identity is created from the name alone.
+     */
+    public function transferToName(
+        string $fromUuid,
+        string $fromName,
+        string $toName,
+        int $amountMinor
+    ) : void{
+        $target = $this->findAccountByName($toName);
+        if($target === null){
+            throw new BankException('No saved or verifiable offline account exists for that player. Offline account creation requires PocketMine saved XUID data; otherwise the player must join the server first.');
+        }
+
+        $this->transfer($fromUuid, $fromName, $target->uuid, $target->playerName, $amountMinor);
+    }
+
     public function deposit(string $uuid, string $playerName, int $amountMinor) : void{
         $this->guardTransactionAmount($amountMinor);
         $this->getAccount($uuid, $playerName);
