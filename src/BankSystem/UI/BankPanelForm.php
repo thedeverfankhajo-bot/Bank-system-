@@ -131,7 +131,10 @@ final class BankPanelForm implements Form{
             return;
         }
 
-        if(!is_array($data)){
+        // The Bedrock client response must match the complete ordered form schema.
+        // Reject sparse, associative, truncated or overlong arrays before they reach
+        // action handlers; they remain responsible for validating individual values.
+        if(!is_array($data) || !array_is_list($data) || count($data) !== count($this->elements)){
             return;
         }
         ($this->handler)($player, $data);

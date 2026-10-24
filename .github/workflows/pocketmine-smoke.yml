@@ -120,7 +120,7 @@ jobs:
             exit 1
           fi
           test -f "$DATA_DIR/plugin_data/BankSystem/bank.sqlite3"
-          grep -q "Enabling BankSystem v1.0.0" "$DATA_DIR/server.log"
+          grep -q "Enabling BankSystem v1.0.1" "$DATA_DIR/server.log"
 
           # Exercise XUID-backed account creation and reject malformed admin amounts without side effects.
           printf 'bank admin give OffSmokeTarget bank 1.00\n' >&3

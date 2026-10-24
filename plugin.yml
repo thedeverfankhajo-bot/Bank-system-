@@ -1,6 +1,6 @@
 name: BankSystem
 main: BankSystem\Main
-version: 1.0.0
+version: 1.0.1
 api: [5.0.0]
 author: thedeverfankhajo-bot
 description: SQLite-backed wallet and banking system for PocketMine-MP API 5

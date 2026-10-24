@@ -118,4 +118,31 @@ final class BankPanelFormTest extends TestCase{
         $form->handleResponse(new Player(), 'invalid');
         self::assertSame(['10.00'], $received);
     }
+
+    public function testCustomFormRejectsMalformedArrayShapesBeforeDispatch() : void{
+        $calls = 0;
+        $received = null;
+        $form = BankPanelForm::custom(
+            'Deposit',
+            [
+                ['type' => 'label', 'text' => 'Enter amount'],
+                ['type' => 'input', 'text' => 'Amount', 'placeholder' => '10.00', 'default' => '']
+            ],
+            static function(Player $player, mixed $data) use (&$calls, &$received) : void{
+                ++$calls;
+                $received = $data;
+            }
+        );
+
+        $form->handleResponse(new Player(), [null, '10.00', 'unexpected']);
+        $form->handleResponse(new Player(), [1 => '10.00']);
+        $form->handleResponse(new Player(), ['label' => null, 1 => '10.00']);
+        $form->handleResponse(new Player(), [null]);
+
+        self::assertSame(0, $calls);
+
+        $form->handleResponse(new Player(), [null, '10.00']);
+        self::assertSame(1, $calls);
+        self::assertSame([null, '10.00'], $received);
+    }
 }
