@@ -57,9 +57,9 @@ final class BankRepositoryTest extends TestCase{
     }
 
     public function testNameLookupIndexExistsForCaseInsensitiveSearch() : void{
-        $property = new \\ReflectionProperty(BankRepository::class, 'database');
+        $property = new \ReflectionProperty(BankRepository::class, 'database');
         $database = $property->getValue($this->repository);
-        self::assertInstanceOf(\\SQLite3::class, $database);
+        self::assertInstanceOf(\SQLite3::class, $database);
         self::assertSame(
             1,
             $database->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_bank_accounts_name'")
