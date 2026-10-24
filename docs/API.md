@@ -14,6 +14,7 @@ BankSystem exposes its service through the main plugin class. API calls use inte
 ## Public operations
 
 - getAccount(string $uuid, string $playerName): BankAccount
+- findAccountByUuid(string $uuid): ?BankAccount — reads an existing account by stable UUID without creating it
 - findAccountByName(string $playerName): ?BankAccount — resolves an existing account by last-known name; throws if ambiguous
 - transferToName(string $fromUuid, string $fromName, string $toName, int $amountMinor): void — sends to a known account even when its owner is offline
 - deposit(string $uuid, string $playerName, int $amountMinor): void
@@ -45,7 +46,7 @@ try{
 }
 ```
 
-For an administrative operation against a known offline account, resolve the account first and pass its stored UUID and last-known name to `give()`, `take()`, or `setBalance()`. Do not create a UUID from a username.
+For an administrative operation against a known offline account, use `findAccountByUuid($uuid)` when the UUID is known and pass the returned account's stored UUID and last-known name to `give()`, `take()`, or `setBalance()`. This UUID lookup does not create an account. If you only know the last-known name, use `findAccountByName()` and handle missing or ambiguous results. Do not create a UUID from a username.
 
 ## Transaction event
 
