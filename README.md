@@ -17,7 +17,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 - `/bank`, `/bank balance`, `/bank deposit`, `/bank withdraw`, `/bank pay`, `/bank top`, and `/bank history`.
 - Operator-only balance administration for online players.
 - SQLite persistence with prepared statements, atomic transactions, rollback on failure, and an audit log.
-- Owner-only SQLite database and existing WAL/SHM file permissions on POSIX systems; Windows relies on filesystem ACLs.
+- Owner-only SQLite database and WAL/SHM permissions on POSIX systems, restrictive file creation, and symbolic-link rejection; Windows relies on filesystem ACLs.
 - A public `BankService` API and `BankTransactionEvent` for other plugins.
 - Configurable currency symbol and maximum transaction amount.
 - GitHub Actions checks PHP 8.1–8.4, runs money and SQLite transaction tests, audits resolved Composer dependencies, and validates YAML.

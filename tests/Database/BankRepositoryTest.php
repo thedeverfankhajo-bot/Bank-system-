@@ -290,6 +290,66 @@ final class BankRepositoryTest extends TestCase{
         }
     }
 
+    public function testNewDatabaseFilesAreOwnerOnlyImmediatelyAfterInitialization() : void{
+        if(DIRECTORY_SEPARATOR === '\\\\'){
+            self::markTestSkipped('POSIX file permission bits are not portable to Windows.');
+        }
+
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-new-permissions-' . bin2hex(random_bytes(8)) . '.sqlite3';
+        $repository = new BankRepository($path);
+
+        try{
+            self::assertFileExists($path);
+            foreach([$path, $path . '-wal', $path . '-shm'] as $file){
+                if(!is_file($file)){
+                    continue;
+                }
+                $permissions = fileperms($file);
+                self::assertNotFalse($permissions, 'Could not read permissions for ' . basename($file));
+                if($permissions !== false){
+                    self::assertSame(0600, $permissions & 0777, basename($file) . ' must start with owner-only permissions.');
+                }
+            }
+        }finally{
+            $repository->close();
+            @unlink($path);
+            @unlink($path . '-wal');
+            @unlink($path . '-shm');
+        }
+    }
+
+    public function testRefusesSymbolicLinkDatabaseWithoutChangingItsTarget() : void{
+        if(DIRECTORY_SEPARATOR === '\\\\' || !function_exists('symlink')){
+            self::markTestSkipped('Symbolic-link security checks require POSIX filesystem support.');
+        }
+
+        $target = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-link-target-' . bin2hex(random_bytes(8)) . '.sqlite3';
+        $link = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-link-' . bin2hex(random_bytes(8)) . '.sqlite3';
+        file_put_contents($target, 'do-not-open-as-database');
+        self::assertTrue(@chmod($target, 0644));
+
+        if(!@symlink($target, $link)){
+            @unlink($target);
+            self::markTestSkipped('This environment does not permit symbolic-link creation.');
+        }
+
+        try{
+            try{
+                $repository = new BankRepository($link);
+                $repository->close();
+                self::fail('Expected a symbolic-link database path to be rejected.');
+            }catch(\\RuntimeException $exception){
+                self::assertStringContainsString('symbolic links', $exception->getMessage());
+            }
+
+            self::assertSame('do-not-open-as-database', file_get_contents($target));
+            self::assertSame(0644, fileperms($target) & 0777);
+        }finally{
+            @unlink($link);
+            @unlink($target);
+        }
+    }
+
     public function testDatabaseAndExistingSidecarsAreOwnerOnlyOnPosix() : void{
         if(DIRECTORY_SEPARATOR === '\\'){
             self::markTestSkipped('POSIX file permission bits are not portable to Windows.');

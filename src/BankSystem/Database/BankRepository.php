@@ -14,25 +14,97 @@ final class BankRepository{
     private string $path;
 
     public function __construct(string $path){
-        $directory = dirname($path);
-        if(!is_dir($directory) && !@mkdir($directory, 0770, true) && !is_dir($directory)){
-            throw new RuntimeException('Could not create the bank database directory.');
+        // SQLite may create the main file and WAL/SHM sidecars while opening and migrating.
+        // Use a restrictive process umask for that entire window on POSIX systems, then
+        // restore the caller's umask even if initialization fails.
+        $restrictCreation = DIRECTORY_SEPARATOR !== '\\' && $path !== ':memory:';
+        $previousUmask = $restrictCreation ? umask(0077) : null;
+
+        try{
+            $directory = dirname($path);
+            if(!is_dir($directory) && !@mkdir($directory, 0770, true) && !is_dir($directory)){
+                throw new RuntimeException('Could not create the bank database directory.');
+            }
+
+            $this->path = $path;
+            $this->prepareStorageFiles();
+            $this->database = new \SQLite3($path, SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE);
+            try{
+                $this->database->enableExceptions(true);
+                $this->database->busyTimeout(5000);
+                $this->database->exec('PRAGMA journal_mode = WAL');
+                $this->database->exec('PRAGMA synchronous = FULL');
+                $this->database->exec('PRAGMA foreign_keys = ON');
+                // Balance data and transaction history must not be world-readable on POSIX systems.
+                $this->secureStoragePermissions();
+                $this->migrate();
+            }catch(Throwable $exception){
+                $this->database->close();
+                throw $exception;
+            }
+        }finally{
+            if($previousUmask !== null){
+                umask($previousUmask);
+            }
+        }
+    }
+
+    /**
+     * Protects storage files before SQLite opens them. This prevents an existing
+     * permissive file or a symbolic-link target from being followed during startup.
+     *
+     * New POSIX database files are created under the restrictive umask set by the
+     * constructor. Existing WAL/SHM files are protected before SQLite can read them.
+     */
+    private function prepareStorageFiles() : void{
+        if($this->path === ':memory:'){
+            return;
         }
 
-        $this->path = $path;
-        $this->database = new \SQLite3($path, SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE);
+        $files = [$this->path, $this->path . '-wal', $this->path . '-shm'];
+        foreach($files as $file){
+            if(is_link($file)){
+                throw new RuntimeException('Bank storage files must not be symbolic links: ' . basename($file));
+            }
+            if(file_exists($file) && !is_file($file)){
+                throw new RuntimeException('Bank storage paths must be regular files: ' . basename($file));
+            }
+        }
+
+        if(!file_exists($this->path) && (file_exists($this->path . '-wal') || file_exists($this->path . '-shm'))){
+            throw new RuntimeException('A SQLite sidecar exists without its main bank database file.');
+        }
+
+        if(DIRECTORY_SEPARATOR === '\\'){
+            // Windows file permissions are inherited from directory ACLs.
+            return;
+        }
+
+        foreach($files as $file){
+            if(is_file($file) && !@chmod($file, 0600)){
+                throw new RuntimeException('Could not restrict permissions on bank storage file: ' . basename($file));
+            }
+        }
+
+        if(file_exists($this->path)){
+            return;
+        }
+
+        $handle = @fopen($this->path, 'x+b');
+        if($handle === false){
+            // Another process may have created the file between the checks above.
+            if(is_link($this->path) || !is_file($this->path) || !@chmod($this->path, 0600)){
+                throw new RuntimeException('Could not securely create the bank database file.');
+            }
+            return;
+        }
+
         try{
-            $this->database->enableExceptions(true);
-            $this->database->busyTimeout(5000);
-            $this->database->exec('PRAGMA journal_mode = WAL');
-            $this->database->exec('PRAGMA synchronous = FULL');
-            $this->database->exec('PRAGMA foreign_keys = ON');
-            // Balance data and transaction history must not be world-readable on POSIX systems.
-            $this->secureStoragePermissions();
-            $this->migrate();
-        }catch(Throwable $exception){
-            $this->database->close();
-            throw $exception;
+            if(!@chmod($this->path, 0600)){
+                throw new RuntimeException('Could not restrict permissions on the new bank database file.');
+            }
+        }finally{
+            fclose($handle);
         }
     }
 
@@ -52,6 +124,9 @@ final class BankRepository{
         }
 
         foreach([$this->path, $this->path . '-wal', $this->path . '-shm'] as $file){
+            if(is_link($file)){
+                throw new RuntimeException('Bank storage files must not be symbolic links: ' . basename($file));
+            }
             if(is_file($file) && !@chmod($file, 0600)){
                 throw new RuntimeException('Could not restrict permissions on bank storage file: ' . basename($file));
             }
