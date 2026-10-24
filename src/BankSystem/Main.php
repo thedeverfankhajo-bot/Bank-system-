@@ -63,7 +63,11 @@ final class Main extends PluginBase implements Listener{
     public function onPlayerJoin(PlayerJoinEvent $event) : void{
         $player = $event->getPlayer();
         try{
-            $this->bankService->getAccount($player->getUniqueId()->toString(), $player->getName());
+            $this->bankService->registerOnlineAccount(
+                $player->getUniqueId()->toString(),
+                $player->getName(),
+                $player->getXuid()
+            );
         }catch(Throwable $exception){
             $this->getLogger()->error('Failed to prepare a bank account for ' . $player->getName() . ': ' . $exception->getMessage());
         }
