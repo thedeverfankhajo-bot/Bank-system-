@@ -127,7 +127,7 @@ jobs:
           OFFLINE_OK=0
           DB_PATH="$DATA_DIR/plugin_data/BankSystem/bank.sqlite3"
           for attempt in $(seq 1 30); do
-            if grep -q "Invalid amount. Use a positive number" "$DATA_DIR/server.log" 2>/dev/null && \
+            if grep -q "Invalid amount. Use a positive number" "$OUTPUT_LOG" 2>/dev/null && \
               "$PMMP_PHP_BIN" -r '
                 $db = new SQLite3($argv[1]);
                 $statement = $db->prepare("SELECT uuid, bank_balance FROM bank_accounts WHERE xuid = :xuid");
