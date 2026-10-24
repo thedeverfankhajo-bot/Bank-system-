@@ -1,0 +1,43 @@
+name: PHP security analysis
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep-php:
+    name: Semgrep PHP rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e9b
+
+      - name: Install Semgrep
+        run: |
+          python3 -m venv "$RUNNER_TEMP/semgrep-venv"
+          "$RUNNER_TEMP/semgrep-venv/bin/pip" install --upgrade pip semgrep
+          echo "$RUNNER_TEMP/semgrep-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Analyze PHP source and tests
+        id: semgrep
+        continue-on-error: true
+        run: |
+          semgrep scan --config p/php --metrics=off --error --sarif --output semgrep.sarif src tests
+
+      - name: Upload PHP security findings to GitHub code scanning
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-php
+
+      - name: Fail the job if PHP analysis did not pass
+        if: steps.semgrep.outcome == 'failure'
+        run: exit 1

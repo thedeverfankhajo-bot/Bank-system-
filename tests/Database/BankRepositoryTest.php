@@ -63,18 +63,12 @@ final class BankRepositoryTest extends TestCase{
                 self::assertStringContainsString('SQLCipher', $exception->getMessage());
             }
 
-            if(is_file($path)){
-                $plainDatabase = new \SQLite3($path);
-                try{
-                    self::assertSame(
-                        0,
-                        (int) $plainDatabase->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'bank_accounts'"),
-                        'The plugin must not initialize a plaintext banking schema when encryption was requested.'
-                    );
-                }finally{
-                    $plainDatabase->close();
-                }
-            }
+            self::assertFileDoesNotExist(
+                $path,
+                'When SQLCipher is unavailable, encryption checks must fail before creating persistent storage.'
+            );
+            self::assertFileDoesNotExist($path . '-wal');
+            self::assertFileDoesNotExist($path . '-shm');
         }finally{
             @unlink($path);
             @unlink($path . '-wal');

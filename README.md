@@ -45,6 +45,21 @@ The default database is **not encrypted**. Operators who need database-file encr
 
 Standard PocketMine PHP packages are not guaranteed to include SQLCipher. Check the exact runtime before enabling the setting. Do not turn it on against an existing plaintext `bank.sqlite3`: migrate a stopped-server backup offline with SQLCipher tooling and verify the encrypted copy first. Key loss prevents recovery, so secure the key and backups separately. Encryption is optional; POSIX file permissions and Windows NTFS ACLs still matter.
 
+### Windows NTFS ACL hardening
+
+On Windows, POSIX mode bits and `umask` do not enforce access control. The `tools/harden-windows-acl.ps1` script resets ACLs recursively for the plugin data directory and any backup directories, then grants access only to the actual PocketMine service account, SYSTEM, and local Administrators. Run PowerShell elevated and provide the exact service identity:
+
+```powershell
+# Review the target paths first
+.\tools\harden-windows-acl.ps1 -DataDirectory 'C:\PocketMine\plugin_data\BankSystem' -ServerAccount 'NT AUTHORITY\LOCAL SERVICE' -BackupDirectory 'D:\PocketMineBackups\BankSystem' -WhatIf
+
+# Apply and verify the ACLs
+.\tools\harden-windows-acl.ps1 -DataDirectory 'C:\PocketMine\plugin_data\BankSystem' -ServerAccount 'NT AUTHORITY\LOCAL SERVICE' -BackupDirectory 'D:\PocketMineBackups\BankSystem'
+icacls 'C:\PocketMine\plugin_data\BankSystem' /verify /T
+```
+
+All target directories must already exist. Replace `ServerAccount` with the identity that actually runs the server; a wrong identity can prevent the server from writing its database or backups. The script resets ACLs under each target, so choose paths carefully and include every backup location. Afterwards, verify real read/write and backup access under the service account.
+
 ## Commands
 
 | Command | Description |
@@ -82,6 +97,10 @@ if($plugin instanceof Main){
 ```
 
 The `getAccount($uuid, $name)` API creates an account if it does not exist; use `findAccountByUuid($uuid)` for a read-only lookup. Methods throw `BankException` for expected business-rule failures; callers should handle it. Database failures are not converted into successful transactions. Successful mutations dispatch `BankTransactionEvent` after the database commit. Event listeners should not assume an event can cancel a committed transaction.
+
+## PHP security analysis
+
+The separate `.github/workflows/php-security.yml` workflow runs Semgrep's PHP rules across `src/` and `tests/` and uploads SARIF results to GitHub Code Scanning. It complements unit tests, syntax lint, and `composer audit`; it is not a guarantee that all vulnerabilities will be found. The existing CodeQL workflow analyzes GitHub Actions workflow files, not PHP source.
 
 ## Development and checks
 

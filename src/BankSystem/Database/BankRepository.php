@@ -27,6 +27,16 @@ final class BankRepository{
             throw new RuntimeException('BANKSYSTEM_SQLCIPHER_KEY must contain at least 32 bytes.');
         }
 
+        // Probe SQLCipher in memory before touching persistent storage. Standard SQLite
+        // silently ignores PRAGMA key, so cipher_version must be checked before the
+        // database path is created or an existing file is opened.
+        if($requireEncryption || $encryptionKey !== null){
+            if($encryptionKey === null){
+                throw new RuntimeException('Encryption at rest requires BANKSYSTEM_SQLCIPHER_KEY.');
+            }
+            self::assertSqlCipherAvailable($encryptionKey);
+        }
+
         // SQLite may create the main file and WAL/SHM sidecars while opening and migrating.
         // Use a restrictive process umask for that entire window on POSIX systems, then
         // restore the caller's umask even if initialization fails.
@@ -89,6 +99,38 @@ final class BankRepository{
             if($previousUmask !== null){
                 umask($previousUmask);
             }
+        }
+    }
+
+    /**
+     * Confirms SQLCipher support without creating or opening any persistent database.
+     *
+     * Stock SQLite silently ignores PRAGMA key, so check cipher_version on an
+     * in-memory connection before file permissions, sidecars, or bank data are touched.
+     * The key is never written to logs or to configuration.
+     */
+    private static function assertSqlCipherAvailable(string $encryptionKey) : void{
+        $probe = new \SQLite3(':memory:');
+        try{
+            $probe->enableExceptions(true);
+            $escapedKey = str_replace("'", "''", $encryptionKey);
+            $probe->exec("PRAGMA key = '" . $escapedKey . "'");
+            $cipherVersion = $probe->querySingle('PRAGMA cipher_version');
+            if(!is_string($cipherVersion) || trim($cipherVersion) === ''){
+                throw new RuntimeException(
+                    'Encryption at rest was requested, but this PHP SQLite3 extension does not provide SQLCipher. No persistent bank storage was opened.'
+                );
+            }
+        }catch(RuntimeException $exception){
+            throw $exception;
+        }catch(Throwable $exception){
+            throw new RuntimeException(
+                'Could not verify SQLCipher support. Encryption was not enabled and no persistent bank storage was opened.',
+                0,
+                $exception
+            );
+        }finally{
+            $probe->close();
         }
     }
 
