@@ -85,7 +85,7 @@ composer lint
 php -d phar.readonly=0 tools/build-phar.php
 ```
 
-The CI workflow runs unit tests and static checks on PHP 8.1–8.4. A separate runtime smoke test downloads the official PocketMine-MP 5.44.3 PHAR and the official production-recommended PHP 8.2 runtime, verifies their SHA-256 checksums, builds BankSystem.phar, and checks that the plugin initializes on a real PocketMine process. This startup smoke test is not a replacement for joining with a Bedrock client and exercising transactions in a staging server.
+The CI workflow runs unit tests and static checks on PHP 8.1–8.4. A separate runtime smoke test downloads the official PocketMine-MP 5.44.3 PHAR and the official production-recommended PHP 8.2 runtime, verifies their SHA-256 checksums, builds BankSystem.phar, and checks that the plugin initializes on a real PocketMine process. On success, it publishes `BankSystem.phar` as a 14-day GitHub Actions artifact on the workflow run. This startup smoke test is not a replacement for joining with a Bedrock client and exercising transactions in a staging server.
 
 ## Security and consistency
 
