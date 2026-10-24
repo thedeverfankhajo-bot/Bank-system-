@@ -15,7 +15,7 @@ BankSystem exposes its service through the main plugin class. API calls use inte
 
 - getAccount(string $uuid, string $playerName): BankAccount
 - findAccountByUuid(string $uuid): ?BankAccount — reads an existing account by stable UUID without creating it
-- findAccountByName(string $playerName): ?BankAccount — resolves an existing account by last-known name; throws if ambiguous
+- findAccountByName(string $playerName): ?BankAccount — resolves an existing account or creates a verifiable offline account from PocketMine's saved XUID; throws if ambiguous or conflicting
 - transferToName(string $fromUuid, string $fromName, string $toName, int $amountMinor): void — sends to a known account even when its owner is offline
 - deposit(string $uuid, string $playerName, int $amountMinor): void
 - withdraw(string $uuid, string $playerName, int $amountMinor): void
@@ -30,7 +30,7 @@ The bucket value must be wallet or bank. API callers should catch BankException 
 
 ## Offline account examples
 
-An offline recipient must already have a BankSystem account saved from a previous join. Resolve by the last-known name or use `transferToName()`; this never fabricates an identity from a name. Unknown recipients and names that match multiple historical accounts are rejected with `BankException`.
+An offline recipient can be resolved from an existing BankSystem account. If no account exists yet, BankSystem can create one only when PocketMine has saved a valid numeric `LastKnownXUID` for that player. The account initially uses an internal `offline-xuid:<xuid>` key; when that player next joins, the record and transaction-history UUID references are atomically promoted to the live UUID. A name alone is never used to invent a UUID or XUID. Missing XUID data, ambiguous names, mismatched XUIDs, or conflicts with a different existing account are rejected with `BankException` rather than guessing.
 
 ```php
 try{
@@ -55,7 +55,7 @@ A successful database mutation dispatches BankTransactionEvent after the SQLite 
 ## Integration guidance
 
 - Use the player's UUID as the account key; player names may change.
-- Offline lookups use the last name stored for an existing account. No UUID is fabricated from a name, and offline accounts are not auto-created. A player must have joined while BankSystem was enabled (or already have a BankSystem record) before offline transfers or admin adjustments can address that account by name.
+- Offline lookup starts with an existing saved bank account. If it does not exist, the service consults PocketMine's own saved player data and may create the account only from a valid numeric `LastKnownXUID`; it never fabricates identity from a name. On the next live join, the temporary account key and historical transaction UUID references are migrated atomically to the live player UUID. If PocketMine has no saved XUID, or an existing row cannot be safely matched to it, the service rejects name-based offline operations. A player can always be registered through a real join.
 - For an online name, BankSystem resolves the currently connected player's UUID first. For an offline name, ambiguous case-insensitive matches are rejected; use an explicit UUID through the API in that case.
 - The in-game UI uses PocketMine-MP's native form interface. FormAPI is not a required dependency; the panel works without it and remains usable when FormAPI is installed because BankSystem doesn't replace FormAPI classes or transport.
 - Keep API calls on PocketMine's main thread unless the plugin has independently designed a safe asynchronous boundary.
