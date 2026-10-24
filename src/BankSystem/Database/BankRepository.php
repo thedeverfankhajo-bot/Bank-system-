@@ -141,7 +141,7 @@ final class BankRepository{
 
         try{
             $version = (int) $this->database->querySingle('PRAGMA user_version');
-            if($version > 1){
+            if($version > 2){
                 throw new RuntimeException('The bank database was created by a newer BankSystem version.');
             }
 
@@ -149,12 +149,33 @@ final class BankRepository{
                 'CREATE TABLE IF NOT EXISTS bank_accounts (
                     uuid TEXT PRIMARY KEY,
                     player_name TEXT NOT NULL,
+                    xuid TEXT,
                     wallet_balance INTEGER NOT NULL DEFAULT 0 CHECK(wallet_balance >= 0),
                     bank_balance INTEGER NOT NULL DEFAULT 0 CHECK(bank_balance >= 0),
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 )'
             );
+            // Upgrade databases created by v1 without changing existing balances or ledger rows.
+            $columns = $this->database->query('PRAGMA table_info(bank_accounts)');
+            if($columns === false){
+                throw new RuntimeException('Could not inspect the bank account schema.');
+            }
+            $hasXuid = false;
+            try{
+                while(($column = $columns->fetchArray(SQLITE3_ASSOC)) !== false){
+                    if(($column['name'] ?? null) === 'xuid'){
+                        $hasXuid = true;
+                        break;
+                    }
+                }
+            }finally{
+                $columns->finalize();
+            }
+            if(!$hasXuid){
+                $this->database->exec('ALTER TABLE bank_accounts ADD COLUMN xuid TEXT');
+            }
+
             $this->database->exec(
                 'CREATE TABLE IF NOT EXISTS bank_transactions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,10 +198,11 @@ final class BankRepository{
                 )'
             );
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_accounts_name ON bank_accounts(player_name COLLATE NOCASE)');
+            $this->database->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_bank_accounts_xuid ON bank_accounts(xuid) WHERE xuid IS NOT NULL AND xuid <> ''");
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_from ON bank_transactions(from_uuid, id DESC)');
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_to ON bank_transactions(to_uuid, id DESC)');
             $this->database->exec('CREATE INDEX IF NOT EXISTS idx_bank_transactions_actor ON bank_transactions(actor_uuid, id DESC)');
-            $this->database->exec('PRAGMA user_version = 1');
+            $this->database->exec('PRAGMA user_version = 2');
             $this->secureStoragePermissions();
             $this->database->exec('COMMIT');
             $transactionOpen = false;
@@ -210,6 +232,175 @@ final class BankRepository{
                 ':updated_at' => $now
             ]
         );
+    }
+
+    /**
+     * Finds the unique saved account associated with an authenticated Bedrock XUID.
+     */
+    public function findAccountByXuid(string $xuid) : ?BankAccount{
+        if($xuid === '' || preg_match('/^[0-9]+$/D', $xuid) !== 1){
+            throw new BankException('A valid numeric XUID is required.');
+        }
+
+        $row = $this->fetchOne('SELECT * FROM bank_accounts WHERE xuid = :xuid', [':xuid' => $xuid]);
+        return $row === null ? null : $this->accountFromRow($row);
+    }
+
+    /**
+     * Creates or finds an offline account identified by PocketMine's saved XUID.
+     * Such accounts use a temporary internal key until the player next joins and
+     * PocketMine supplies their live UUID. The key is never derived from a name.
+     */
+    public function ensureOfflineAccount(
+        string $playerName,
+        string $xuid,
+        int $initialWallet,
+        int $initialBank
+    ) : BankAccount{
+        $playerName = trim($playerName);
+        if($playerName === '' || strlen($playerName) > 64 || $xuid === '' || preg_match('/^[0-9]+$/D', $xuid) !== 1){
+            throw new BankException('A valid player name and numeric XUID are required for offline account lookup.');
+        }
+        if($initialWallet < 0 || $initialBank < 0){
+            throw new BankException('Initial bank balances cannot be negative.');
+        }
+
+        $this->database->exec('BEGIN IMMEDIATE');
+        $transactionOpen = true;
+        try{
+            $row = $this->fetchOne('SELECT * FROM bank_accounts WHERE xuid = :xuid', [':xuid' => $xuid]);
+            $now = time();
+            if($row !== null){
+                $uuid = (string) $row['uuid'];
+                $this->execute(
+                    'UPDATE bank_accounts SET player_name = :player_name, updated_at = :updated_at WHERE uuid = :uuid',
+                    [':player_name' => $playerName, ':updated_at' => $now, ':uuid' => $uuid]
+                );
+            }else{
+                $uuid = 'offline-xuid:' . $xuid;
+                if($this->fetchOne('SELECT uuid FROM bank_accounts WHERE uuid = :uuid', [':uuid' => $uuid]) !== null){
+                    throw new BankException('The temporary offline account key is already in use.');
+                }
+                $this->execute(
+                    'INSERT INTO bank_accounts (uuid, player_name, xuid, wallet_balance, bank_balance, created_at, updated_at)
+                     VALUES (:uuid, :player_name, :xuid, :wallet, :bank, :created_at, :updated_at)',
+                    [
+                        ':uuid' => $uuid,
+                        ':player_name' => $playerName,
+                        ':xuid' => $xuid,
+                        ':wallet' => $initialWallet,
+                        ':bank' => $initialBank,
+                        ':created_at' => $now,
+                        ':updated_at' => $now
+                    ]
+                );
+            }
+
+            $this->secureStoragePermissions();
+            $this->database->exec('COMMIT');
+            $transactionOpen = false;
+        }catch(Throwable $exception){
+            if($transactionOpen){
+                try{
+                    $this->database->exec('ROLLBACK');
+                }catch(Throwable){
+                }
+            }
+            throw $exception;
+        }
+
+        $account = $this->getAccount($uuid);
+        if($account === null){
+            throw new RuntimeException('The offline bank account could not be loaded after creation.');
+        }
+        return $account;
+    }
+
+    /**
+     * Registers a live account and reconciles an XUID-keyed offline account if one exists.
+     * All account-key and ledger-reference changes happen atomically.
+     */
+    public function ensureAccountWithXuid(
+        string $uuid,
+        string $playerName,
+        string $xuid,
+        int $initialWallet,
+        int $initialBank
+    ) : void{
+        if(trim($uuid) === '' || trim($playerName) === ''){
+            throw new BankException('A valid player UUID and name are required.');
+        }
+        if($initialWallet < 0 || $initialBank < 0){
+            throw new BankException('Initial bank balances cannot be negative.');
+        }
+        if($xuid === ''){
+            $this->ensureAccount($uuid, $playerName, $initialWallet, $initialBank);
+            return;
+        }
+        if(preg_match('/^[0-9]+$/D', $xuid) !== 1){
+            throw new BankException('PocketMine returned an invalid XUID; the account identity was not changed.');
+        }
+
+        $this->database->exec('BEGIN IMMEDIATE');
+        $transactionOpen = true;
+        try{
+            $byUuid = $this->fetchOne('SELECT * FROM bank_accounts WHERE uuid = :uuid', [':uuid' => $uuid]);
+            $byXuid = $this->fetchOne('SELECT * FROM bank_accounts WHERE xuid = :xuid', [':xuid' => $xuid]);
+            $now = time();
+
+            if($byXuid !== null && (string) $byXuid['uuid'] !== $uuid){
+                if($byUuid !== null){
+                    throw new BankException('This XUID and live UUID point to different saved bank accounts. No balances were merged; administrator review is required.');
+                }
+
+                $oldUuid = (string) $byXuid['uuid'];
+                $this->execute(
+                    'UPDATE bank_accounts SET uuid = :uuid, player_name = :player_name, updated_at = :updated_at WHERE uuid = :old_uuid',
+                    [':uuid' => $uuid, ':player_name' => $playerName, ':updated_at' => $now, ':old_uuid' => $oldUuid]
+                );
+                foreach(['actor_uuid', 'from_uuid', 'to_uuid'] as $column){
+                    $this->execute(
+                        'UPDATE bank_transactions SET ' . $column . ' = :new_uuid WHERE ' . $column . ' = :old_uuid',
+                        [':new_uuid' => $uuid, ':old_uuid' => $oldUuid]
+                    );
+                }
+            }elseif($byUuid !== null){
+                $savedXuid = $byUuid['xuid'] === null ? '' : (string) $byUuid['xuid'];
+                if($savedXuid !== '' && $savedXuid !== $xuid){
+                    throw new BankException('The live UUID is already linked to a different XUID. The account was not changed.');
+                }
+                $this->execute(
+                    'UPDATE bank_accounts SET player_name = :player_name, xuid = :xuid, updated_at = :updated_at WHERE uuid = :uuid',
+                    [':player_name' => $playerName, ':xuid' => $xuid, ':updated_at' => $now, ':uuid' => $uuid]
+                );
+            }else{
+                $this->execute(
+                    'INSERT INTO bank_accounts (uuid, player_name, xuid, wallet_balance, bank_balance, created_at, updated_at)
+                     VALUES (:uuid, :player_name, :xuid, :wallet, :bank, :created_at, :updated_at)',
+                    [
+                        ':uuid' => $uuid,
+                        ':player_name' => $playerName,
+                        ':xuid' => $xuid,
+                        ':wallet' => $initialWallet,
+                        ':bank' => $initialBank,
+                        ':created_at' => $now,
+                        ':updated_at' => $now
+                    ]
+                );
+            }
+
+            $this->secureStoragePermissions();
+            $this->database->exec('COMMIT');
+            $transactionOpen = false;
+        }catch(Throwable $exception){
+            if($transactionOpen){
+                try{
+                    $this->database->exec('ROLLBACK');
+                }catch(Throwable){
+                }
+            }
+            throw $exception;
+        }
     }
 
     public function getAccount(string $uuid) : ?BankAccount{
@@ -531,7 +722,8 @@ final class BankRepository{
             (int) $row['wallet_balance'],
             (int) $row['bank_balance'],
             (int) $row['created_at'],
-            (int) $row['updated_at']
+            (int) $row['updated_at'],
+            isset($row['xuid']) && $row['xuid'] !== '' ? (string) $row['xuid'] : null
         );
     }
 
