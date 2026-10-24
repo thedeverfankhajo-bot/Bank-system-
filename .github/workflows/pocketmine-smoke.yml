@@ -1,0 +1,101 @@
+name: PocketMine runtime smoke test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pocketmine-startup:
+    name: Load plugin on PocketMine-MP 5.44.3
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download and verify PocketMine-MP server PHAR
+        env:
+          PMMP_PHAR_SHA256: d8b4d87a64124d83659f629c87d6a8e0e142192f6c719fe4684272ff44105539
+        run: |
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output "$RUNNER_TEMP/PocketMine-MP.phar" \
+            "https://github.com/pmmp/PocketMine-MP/releases/download/5.44.3/PocketMine-MP.phar"
+          echo "$PMMP_PHAR_SHA256  $RUNNER_TEMP/PocketMine-MP.phar" | sha256sum --check
+
+      - name: Download and verify PocketMine PHP 8.4 runtime
+        env:
+          PMMP_PHP_SHA256: 5b9a1a8f103f7b91670336495b531d9a75c05cca3bd544251a7b63d2124bcc6c
+        run: |
+          mkdir -p "$RUNNER_TEMP/pmmp-php"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output "$RUNNER_TEMP/pmmp-php.tar.gz" \
+            "https://github.com/pmmp/PHP-Binaries/releases/download/pm5-php-8.4-latest/PHP-8.4-Linux-x86_64-PM5.tar.gz"
+          echo "$PMMP_PHP_SHA256  $RUNNER_TEMP/pmmp-php.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/pmmp-php.tar.gz" -C "$RUNNER_TEMP/pmmp-php"
+          PHP_BIN="$(find "$RUNNER_TEMP/pmmp-php" -type f -path '*/bin/php' -executable -print -quit)"
+          test -n "$PHP_BIN"
+          "$PHP_BIN" --version
+          echo "PMMP_PHP_BIN=$PHP_BIN" >> "$GITHUB_ENV"
+
+      - name: Build BankSystem PHAR
+        run: php -d phar.readonly=0 tools/build-phar.php "$RUNNER_TEMP/BankSystem.phar"
+
+      - name: Boot PocketMine and verify plugin initialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          SERVER_DIR="$RUNNER_TEMP/pmmp-server"
+          DATA_DIR="$SERVER_DIR/data"
+          PLUGIN_DIR="$SERVER_DIR/plugins"
+          OUTPUT_LOG="$SERVER_DIR/console.log"
+          mkdir -p "$DATA_DIR" "$PLUGIN_DIR"
+          cp "$RUNNER_TEMP/PocketMine-MP.phar" "$SERVER_DIR/PocketMine-MP.phar"
+          cp "$RUNNER_TEMP/BankSystem.phar" "$PLUGIN_DIR/BankSystem.phar"
+          mkfifo "$SERVER_DIR/console-input"
+          cd "$SERVER_DIR"
+
+          "$PMMP_PHP_BIN" "$SERVER_DIR/PocketMine-MP.phar" \
+            --no-wizard --disable-ansi \
+            --data="$DATA_DIR" --plugins="$PLUGIN_DIR" \
+            < "$SERVER_DIR/console-input" > "$OUTPUT_LOG" 2>&1 &
+          SERVER_PID=$!
+          cleanup(){
+            if kill -0 "$SERVER_PID" 2>/dev/null; then
+              kill "$SERVER_PID" 2>/dev/null || true
+              wait "$SERVER_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          exec 3>"$SERVER_DIR/console-input"
+          READY=0
+          for attempt in $(seq 1 60); do
+            if grep -q "BankSystem enabled. SQLite storage is ready." "$DATA_DIR/server.log" 2>/dev/null; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              cat "$OUTPUT_LOG"
+              cat "$DATA_DIR/server.log" 2>/dev/null || true
+              echo "PocketMine exited before BankSystem initialized." >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          cat "$OUTPUT_LOG"
+          cat "$DATA_DIR/server.log" 2>/dev/null || true
+          if [ "$READY" -ne 1 ]; then
+            echo "BankSystem did not initialize within 60 seconds." >&2
+            exit 1
+          fi
+          test -f "$DATA_DIR/plugin_data/BankSystem/bank.sqlite3"
+          grep -q "Enabling BankSystem v1.0.0" "$DATA_DIR/server.log"
+          printf 'stop\n' >&3
+          exec 3>&-
+          wait "$SERVER_PID"
+          trap - EXIT
