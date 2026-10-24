@@ -30,7 +30,19 @@ final class Main extends PluginBase implements Listener{
         }
 
         try{
-            $this->repository = new BankRepository($this->getDataFolder() . 'bank.sqlite3');
+            $encryptionSetting = $this->getConfig()->getNested('storage.encryption-at-rest', false);
+            if(!is_bool($encryptionSetting)){
+                throw new \RuntimeException('The storage.encryption-at-rest setting must be a YAML boolean.');
+            }
+            $encryptionEnabled = $encryptionSetting;
+            $environmentKey = getenv('BANKSYSTEM_SQLCIPHER_KEY');
+            $encryptionKey = is_string($environmentKey) ? $environmentKey : null;
+
+            $this->repository = new BankRepository(
+                $this->getDataFolder() . 'bank.sqlite3',
+                $encryptionEnabled ? $encryptionKey : null,
+                $encryptionEnabled
+            );
             $this->bankService = new BankService($this, $this->repository);
             $this->bankCommand = new BankCommand($this, $this->bankService);
             $this->getServer()->getPluginManager()->registerEvents($this, $this);

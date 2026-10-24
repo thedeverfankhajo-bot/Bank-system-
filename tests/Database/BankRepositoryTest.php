@@ -28,6 +28,60 @@ final class BankRepositoryTest extends TestCase{
         parent::tearDown();
     }
 
+    public function testEncryptionRequiresAnExternalKeyAndFailsBeforeOpeningStorage() : void{
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-encryption-no-key-' . bin2hex(random_bytes(8)) . '.sqlite3';
+
+        try{
+            new BankRepository($path, null, true);
+            self::fail('Expected encryption to fail closed when no key is configured.');
+        }catch(\RuntimeException $exception){
+            self::assertStringContainsString('BANKSYSTEM_SQLCIPHER_KEY', $exception->getMessage());
+        }
+
+        self::assertFileDoesNotExist($path, 'Missing-key validation must happen before SQLite opens or creates storage.');
+    }
+
+    public function testEncryptionDoesNotFallBackToPlaintextWhenSqlcipherIsUnavailable() : void{
+        $probe = new \SQLite3(':memory:');
+        try{
+            $cipherVersion = $probe->querySingle('PRAGMA cipher_version');
+        }finally{
+            $probe->close();
+        }
+
+        if(is_string($cipherVersion) && trim($cipherVersion) !== ''){
+            self::markTestSkipped('This runtime includes SQLCipher; the non-SQLCipher fallback test is not applicable.');
+        }
+
+        $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-encryption-no-cipher-' . bin2hex(random_bytes(8)) . '.sqlite3';
+        try{
+            try{
+                $encrypted = new BankRepository($path, str_repeat('K', 32), true);
+                $encrypted->close();
+                self::fail('Expected encryption to fail when SQLCipher is unavailable.');
+            }catch(\RuntimeException $exception){
+                self::assertStringContainsString('SQLCipher', $exception->getMessage());
+            }
+
+            if(is_file($path)){
+                $plainDatabase = new \SQLite3($path);
+                try{
+                    self::assertSame(
+                        0,
+                        (int) $plainDatabase->querySingle("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'bank_accounts'"),
+                        'The plugin must not initialize a plaintext banking schema when encryption was requested.'
+                    );
+                }finally{
+                    $plainDatabase->close();
+                }
+            }
+        }finally{
+            @unlink($path);
+            @unlink($path . '-wal');
+            @unlink($path . '-shm');
+        }
+    }
+
     public function testFindAccountsByNameIsCaseInsensitive() : void{
         $matches = $this->repository->findAccountsByName('aLeX');
 

@@ -18,6 +18,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 - Operator-only balance administration for online and offline accounts, including eligible players known to PocketMine but not yet registered with BankSystem.
 - SQLite persistence with prepared statements, atomic transactions, rollback on failure, and an audit log.
 - Owner-only SQLite database and WAL/SHM permissions on POSIX systems, restrictive file creation, and symbolic-link rejection; Windows relies on filesystem ACLs.
+- Optional SQLCipher encryption at rest for deployments using a SQLCipher-enabled PHP SQLite3 extension; encryption is opt-in and fails closed when requested but unavailable.
 - A public `BankService` API and `BankTransactionEvent` for other plugins.
 - Configurable currency symbol and maximum transaction amount.
 - GitHub Actions checks PHP 8.1–8.4, runs money and SQLite transaction tests, audits resolved Composer dependencies, and validates YAML.
@@ -37,6 +38,12 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 Run `/bank` or `/bank panel` in-game to open the native Bedrock form panel. It uses PocketMine-MP's built-in form transport, so FormAPI is not required. It also continues to work when FormAPI is installed, since BankSystem neither replaces nor patches its classes.
 
 The SQLite database is created automatically in the plugin data folder. Back it up while the server is stopped.
+
+### Optional encryption at rest
+
+The default database is **not encrypted**. Operators who need database-file encryption can opt in with a PHP `sqlite3` extension built against SQLCipher. Set `storage.encryption-at-rest: true` in `plugin_data/BankSystem/config.yml`, then provide `BANKSYSTEM_SQLCIPHER_KEY` to the PocketMine server process through the host's secret/environment configuration. Use a randomly generated key/passphrase of at least 32 bytes; do not put it in `config.yml`, source control, shell history, or issue reports. Startup fails rather than using plaintext if SQLCipher support or the key is missing.
+
+Standard PocketMine PHP packages are not guaranteed to include SQLCipher. Check the exact runtime before enabling the setting. Do not turn it on against an existing plaintext `bank.sqlite3`: migrate a stopped-server backup offline with SQLCipher tooling and verify the encrypted copy first. Key loss prevents recovery, so secure the key and backups separately. Encryption is optional; POSIX file permissions and Windows NTFS ACLs still matter.
 
 ## Commands
 

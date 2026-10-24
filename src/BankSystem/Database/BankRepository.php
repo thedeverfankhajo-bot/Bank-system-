@@ -13,7 +13,20 @@ final class BankRepository{
     private \SQLite3 $database;
     private string $path;
 
-    public function __construct(string $path){
+    public function __construct(
+        string $path,
+        ?string $encryptionKey = null,
+        bool $requireEncryption = false
+    ){
+        // Encryption must be explicitly requested and must never silently degrade to plaintext.
+        // Keep the key outside plugin config and source control; deployments provide it via env.
+        if($requireEncryption && ($encryptionKey === null || trim($encryptionKey) === '')){
+            throw new RuntimeException('Encryption at rest is enabled, but BANKSYSTEM_SQLCIPHER_KEY is not set.');
+        }
+        if($encryptionKey !== null && strlen($encryptionKey) < 32){
+            throw new RuntimeException('BANKSYSTEM_SQLCIPHER_KEY must contain at least 32 bytes.');
+        }
+
         // SQLite may create the main file and WAL/SHM sidecars while opening and migrating.
         // Use a restrictive process umask for that entire window on POSIX systems, then
         // restore the caller's umask even if initialization fails.
@@ -31,6 +44,36 @@ final class BankRepository{
             $this->database = new \SQLite3($path, SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE);
             try{
                 $this->database->enableExceptions(true);
+
+                if($encryptionKey !== null || $requireEncryption){
+                    if($encryptionKey === null){
+                        throw new RuntimeException('Encryption at rest requires BANKSYSTEM_SQLCIPHER_KEY.');
+                    }
+
+                    // SQLCipher accepts a passphrase through PRAGMA key. Escape SQL string
+                    // delimiters and never include the key in logs or exception messages.
+                    $escapedKey = str_replace("'", "''", $encryptionKey);
+                    $this->database->exec("PRAGMA key = '" . $escapedKey . "'");
+                    $cipherVersion = $this->database->querySingle('PRAGMA cipher_version');
+                    if(!is_string($cipherVersion) || trim($cipherVersion) === ''){
+                        throw new RuntimeException(
+                            'Encryption at rest was requested, but this PHP SQLite3 extension does not provide SQLCipher. The database was not migrated or opened in plaintext mode.'
+                        );
+                    }
+
+                    // Force a read now so wrong keys and existing plaintext databases fail
+                    // during startup, before schema migration or account operations.
+                    try{
+                        $this->database->querySingle('SELECT count(*) FROM sqlite_master');
+                    }catch(Throwable $exception){
+                        throw new RuntimeException(
+                            'SQLCipher could not read the bank database. Verify BANKSYSTEM_SQLCIPHER_KEY and migrate any existing plaintext SQLite database offline before enabling encryption.',
+                            0,
+                            $exception
+                        );
+                    }
+                }
+
                 $this->database->busyTimeout(5000);
                 $this->database->exec('PRAGMA journal_mode = WAL');
                 $this->database->exec('PRAGMA synchronous = FULL');

@@ -1,3 +1,10 @@
+storage:
+  # Disabled by default for compatibility with standard PocketMine PHP builds.
+  # Set true only when PHP's sqlite3 extension is compiled with SQLCipher support.
+  # Provide BANKSYSTEM_SQLCIPHER_KEY through the server process environment (32+ bytes).
+  # Enabling this on an existing plaintext database requires offline SQLCipher migration.
+  encryption-at-rest: false
+
 currency:
   # Displayed before all amounts.
   symbol: "$"
