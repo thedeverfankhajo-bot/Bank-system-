@@ -291,7 +291,7 @@ final class BankRepositoryTest extends TestCase{
     }
 
     public function testNewDatabaseFilesAreOwnerOnlyImmediatelyAfterInitialization() : void{
-        if(DIRECTORY_SEPARATOR === '\\\\'){
+        if(DIRECTORY_SEPARATOR === '\\'){
             self::markTestSkipped('POSIX file permission bits are not portable to Windows.');
         }
 
@@ -319,7 +319,7 @@ final class BankRepositoryTest extends TestCase{
     }
 
     public function testRefusesSymbolicLinkDatabaseWithoutChangingItsTarget() : void{
-        if(DIRECTORY_SEPARATOR === '\\\\' || !function_exists('symlink')){
+        if(DIRECTORY_SEPARATOR === '\\' || !function_exists('symlink')){
             self::markTestSkipped('Symbolic-link security checks require POSIX filesystem support.');
         }
 
@@ -338,7 +338,7 @@ final class BankRepositoryTest extends TestCase{
                 $repository = new BankRepository($link);
                 $repository->close();
                 self::fail('Expected a symbolic-link database path to be rejected.');
-            }catch(\\RuntimeException $exception){
+            }catch(\RuntimeException $exception){
                 self::assertStringContainsString('symbolic links', $exception->getMessage());
             }
 
