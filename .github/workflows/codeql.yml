@@ -39,9 +39,8 @@ jobs:
           category: "/language:actions"
           output: ${{ runner.temp }}/codeql-results
           upload-database: false
-          # Private repositories need GitHub Code Security enabled to upload scan alerts.
-          # Set CODEQL_UPLOAD_RESULTS to the string "true" only after Code Security is enabled.
-          # Otherwise, keep SARIF as a workflow artifact.
+          # This public repository publishes GitHub Actions findings to Code Scanning.
+          # The artifact step below also retains SARIF for offline review.
           upload: always
 
       - name: Archive CodeQL SARIF results
