@@ -11,7 +11,8 @@ final class BankAccount{
         public readonly int $walletBalance,
         public readonly int $bankBalance,
         public readonly int $createdAt,
-        public readonly int $updatedAt
+        public readonly int $updatedAt,
+        public readonly ?string $xuid = null
     ){
     }
 
