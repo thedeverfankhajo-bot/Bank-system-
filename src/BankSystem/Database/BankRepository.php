@@ -217,6 +217,30 @@ final class BankRepository{
     }
 
     /**
+     * Finds saved accounts by last-known player name without assuming that the name
+     * uniquely identifies an account. Returning at most two matches lets callers
+     * reject ambiguous names rather than potentially crediting the wrong UUID.
+     *
+     * @return list<BankAccount>
+     */
+    public function findAccountsByName(string $playerName) : array{
+        $playerName = trim($playerName);
+        if($playerName === '' || strlen($playerName) > 64){
+            return [];
+        }
+
+        $rows = $this->fetchAll(
+            'SELECT * FROM bank_accounts
+             WHERE player_name COLLATE NOCASE = :player_name COLLATE NOCASE
+             ORDER BY updated_at DESC, uuid ASC
+             LIMIT :limit',
+            [':player_name' => $playerName, ':limit' => 2]
+        );
+
+        return array_map(fn(array $row) : BankAccount => $this->accountFromRow($row), $rows);
+    }
+
+    /**
      * Moves money between two account buckets and writes the ledger row atomically.
      *
      * @return array<string, mixed>

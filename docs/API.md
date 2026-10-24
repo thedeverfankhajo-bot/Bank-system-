@@ -14,6 +14,8 @@ BankSystem exposes its service through the main plugin class. API calls use inte
 ## Public operations
 
 - getAccount(string $uuid, string $playerName): BankAccount
+- findAccountByName(string $playerName): ?BankAccount — resolves an existing account by last-known name; throws if ambiguous
+- transferToName(string $fromUuid, string $fromName, string $toName, int $amountMinor): void — sends to a known account even when its owner is offline
 - deposit(string $uuid, string $playerName, int $amountMinor): void
 - withdraw(string $uuid, string $playerName, int $amountMinor): void
 - transfer(string $fromUuid, string $fromName, string $toUuid, string $toName, int $amountMinor): void
@@ -32,6 +34,9 @@ A successful database mutation dispatches BankTransactionEvent after the SQLite 
 ## Integration guidance
 
 - Use the player's UUID as the account key; player names may change.
+- Offline lookups use the last name stored for an existing account. No UUID is fabricated from a name, and offline accounts are not auto-created. A player must have joined while BankSystem was enabled (or already have a BankSystem record) before offline transfers or admin adjustments can address that account by name.
+- For an online name, BankSystem resolves the currently connected player's UUID first. For an offline name, ambiguous case-insensitive matches are rejected; use an explicit UUID through the API in that case.
+- The in-game UI uses PocketMine-MP's native form interface. FormAPI is not a required dependency; the panel works without it and remains usable when FormAPI is installed because BankSystem doesn't replace FormAPI classes or transport.
 - Keep API calls on PocketMine's main thread unless the plugin has independently designed a safe asynchronous boundary.
 - Do not directly edit the SQLite database while the server is running.
 - Do not assume a transaction failed just because an unrelated listener logs an error; BankSystem catches listener exceptions after commit and records them in the server log.

@@ -15,7 +15,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 - Explicit confirmation forms for player transfers and privileged administrator balance changes.
 - Separate wallet and bank balances, stored as integer minor units to avoid floating-point money errors.
 - `/bank`, `/bank balance`, `/bank deposit`, `/bank withdraw`, `/bank pay`, `/bank top`, and `/bank history`.
-- Operator-only balance administration for online players.
+- Operator-only balance administration for online and previously registered offline players.
 - SQLite persistence with prepared statements, atomic transactions, rollback on failure, and an audit log.
 - Owner-only SQLite database and WAL/SHM permissions on POSIX systems, restrictive file creation, and symbolic-link rejection; Windows relies on filesystem ACLs.
 - A public `BankService` API and `BankTransactionEvent` for other plugins.
@@ -34,7 +34,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 3. Start the server once to generate `plugin_data/BankSystem/config.yml` and `bank.sqlite3`.
 4. Configure the currency and limits, then restart the server.
 
-Run `/bank` or `/bank panel` in-game to open the native Bedrock form panel. It uses PocketMine-MP's built-in form transport and does not require a separate FormAPI plugin.
+Run `/bank` or `/bank panel` in-game to open the native Bedrock form panel. It uses PocketMine-MP's built-in form transport, so FormAPI is not required. It also continues to work when FormAPI is installed, since BankSystem neither replaces nor patches its classes.
 
 The SQLite database is created automatically in the plugin data folder. Back it up while the server is stopped.
 
@@ -46,14 +46,14 @@ The SQLite database is created automatically in the plugin data folder. Back it 
 | `/bank balance` | Show your wallet, bank, and total balance |
 | `/bank deposit <amount>` | Move money from wallet to bank |
 | `/bank withdraw <amount>` | Move money from bank to wallet |
-| `/bank pay <player> <amount>` | Send wallet money to an online player |
+| `/bank pay <player> <amount>` | Send wallet money to an online or known offline account |
 | `/bank top` | Show the top 10 bank balances |
 | `/bank history [page]` | Show your latest transactions |
-| `/bank admin give <player> <wallet\|bank> <amount>` | Add funds to an online player |
-| `/bank admin take <player> <wallet\|bank> <amount>` | Remove funds from an online player |
-| `/bank admin set <player> <wallet\|bank> <amount>` | Set an online player's balance (zero is allowed) |
+| `/bank admin give <player> <wallet\|bank> <amount>` | Add funds to an online or known offline account |
+| `/bank admin take <player> <wallet\|bank> <amount>` | Remove funds from an online or known offline account |
+| `/bank admin set <player> <wallet\|bank> <amount>` | Set an online or known offline account balance (zero is allowed) |
 
-The `banksystem.admin` permission defaults to operators. Ordinary players receive `banksystem.use` by default. Amounts must be positive and may contain at most two decimal places; admin `set` may use `0`. The configured transaction cap also limits the absolute balance change made by admin `set`. Per-player transaction cooldown state is cleared on disconnect.
+The `banksystem.admin` permission defaults to operators. Ordinary players receive `banksystem.use` by default. Amounts must be positive and may contain at most two decimal places; admin `set` may use `0`. The configured transaction cap also limits the absolute balance change made by admin `set`. Per-player transaction cooldown state is cleared on disconnect. Offline recipients must already have a saved BankSystem account; account identity is never inferred from a name alone.
 
 ## Configuration
 
@@ -91,7 +91,7 @@ The repository workflow runs these checks on pushes and pull requests. The repos
 - Database values use bound parameters; user input is never interpolated into SQL.
 - Wallet/bank changes and their audit record commit together inside one SQLite transaction.
 - Player accounts are keyed by PocketMine UUID rather than a mutable display name.
-- Administrative operations require an explicit permission and currently target online players only.
+- Administrative operations require the explicit `banksystem.admin` permission. They can target online players by live UUID and offline players through an existing saved account. Offline accounts are not guessed or created from names alone, and ambiguous historical name matches are rejected.
 - No passwords, payment credentials, network calls, or external services are involved.
 
 ## License

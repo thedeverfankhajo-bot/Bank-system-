@@ -179,7 +179,7 @@ final class BankCommand{
                 $player->sendForm(BankPanelForm::custom(
                     '§l§6BANKSYSTEM §8• §fTRANSFER',
                     [
-                        ['type' => 'input', 'text' => 'Exact online player name', 'placeholder' => 'PlayerName', 'default' => ''],
+                        ['type' => 'input', 'text' => 'Player name (online or known offline account)', 'placeholder' => 'PlayerName', 'default' => ''],
                         ['type' => 'input', 'text' => 'Amount', 'placeholder' => '10.00', 'default' => '']
                     ],
                     function(Player $formPlayer, mixed $data) : void{
@@ -334,7 +334,7 @@ final class BankCommand{
             '§l§6BANKSYSTEM §8• §fADMIN',
             [
                 ['type' => 'dropdown', 'text' => 'Action', 'options' => ['Give', 'Take', 'Set balance'], 'default' => 0],
-                ['type' => 'input', 'text' => 'Exact online player name', 'placeholder' => 'PlayerName', 'default' => ''],
+                ['type' => 'input', 'text' => 'Player name (online or known offline account)', 'placeholder' => 'PlayerName', 'default' => ''],
                 ['type' => 'dropdown', 'text' => 'Balance type', 'options' => ['Wallet', 'Bank'], 'default' => 1],
                 ['type' => 'input', 'text' => 'Amount (Set may be zero)', 'placeholder' => '10.00', 'default' => '']
             ],
@@ -376,7 +376,7 @@ final class BankCommand{
             $targetName = $data[0] ?? null;
             $amount = $data[1] ?? null;
             if(!is_string($targetName) || trim($targetName) === '' || strlen($targetName) > 16 || !is_string($amount)){
-                $this->message($player, 'Enter a valid online player name and amount.');
+                $this->message($player, 'Enter a valid player name and amount.');
                 $this->openPanel($player);
                 return;
             }
@@ -397,7 +397,7 @@ final class BankCommand{
             if(!is_int($modeIndex) || !isset([0, 1, 2][$modeIndex]) ||
                 !is_string($targetName) || trim($targetName) === '' || strlen($targetName) > 16 ||
                 !is_int($bucketIndex) || !isset([0, 1][$bucketIndex]) || !is_string($amount)){
-                $this->message($player, 'Enter valid administrator form values.');
+                $this->message($player, 'Enter a valid player name and administrator values.');
                 $this->openPanel($player);
                 return;
             }
@@ -416,27 +416,28 @@ final class BankCommand{
             return;
         }
 
-        $target = $this->plugin->getServer()->getPlayerExact($targetName);
+        $target = $this->findBankAccount($player, $targetName);
         if($target === null){
-            $this->message($player, 'Player ' . $targetName . ' is no longer online.');
             $this->openPanel($player);
             return;
         }
-        if($target->getUniqueId()->toString() === $player->getUniqueId()->toString()){
+        if($target->uuid === $player->getUniqueId()->toString()){
             $this->message($player, 'You cannot pay yourself.');
             $this->openPanel($player);
             return;
         }
 
-        // A confirmation must remain bound to the account the player actually saw.
-        // Names can be reused after disconnect; the UUID cannot be silently substituted.
-        $targetName = $target->getName();
-        $targetUuid = $target->getUniqueId()->toString();
+        // Bind confirmation to the saved UUID, not merely a display name. If the
+        // owner disconnects, the same persisted account remains a valid recipient.
+        $targetName = $target->playerName;
+        $targetUuid = $target->uuid;
+        $targetPlayer = $this->onlinePlayerForAccount($target);
+        $recipientStatus = $targetPlayer === null ? 'offline account' : 'online player';
 
         $player->sendForm(BankPanelForm::modal(
             '§l§6BANKSYSTEM §8• §fCONFIRM TRANSFER',
-            "§eSend §f" . $this->formatMoney($amountMinor) . " §eto §f" . $target->getName() .
-                "§e?\n\n§cThis transfer cannot be automatically reversed.",
+            "§eSend §f" . $this->formatMoney($amountMinor) . " §eto §f" . $targetName .
+                " §8(" . $recipientStatus . ")§e?\n\n§cThis transfer cannot be automatically reversed.",
             'Confirm transfer',
             'Cancel',
             function(Player $formPlayer, bool $confirmed) use ($targetName, $targetUuid, $amountInput) : void{
@@ -445,16 +446,17 @@ final class BankCommand{
                     return;
                 }
                 if($confirmed){
-                    $currentTarget = $this->plugin->getServer()->getPlayerExact($targetName);
-                    if($currentTarget === null || !PlayerIdentity::matches(
-                        $targetUuid,
-                        $currentTarget->getUniqueId()->toString()
-                    )){
-                        $this->message($formPlayer, 'The intended recipient is no longer online under the same account. No transfer was made.');
+                    try{
+                        $currentTarget = $this->resolveAccountByName($targetName);
+                    }catch(Throwable){
+                        $currentTarget = null;
+                    }
+                    if($currentTarget === null || !PlayerIdentity::matches($targetUuid, $currentTarget->uuid)){
+                        $this->message($formPlayer, 'The intended recipient account could not be verified. No transfer was made.');
                         $this->openPanel($formPlayer);
                         return;
                     }
-                    // Re-resolve and validate again in the common transaction handler.
+                    // Re-resolve and apply the same amount/cooldown/transaction rules.
                     $this->handlePay($formPlayer, ['pay', $targetName, $amountInput]);
                 }
                 $this->openPanel($formPlayer);
@@ -485,21 +487,22 @@ final class BankCommand{
             return;
         }
 
-        $target = $this->plugin->getServer()->getPlayerExact($targetName);
+        $target = $this->findBankAccount($player, $targetName);
         if($target === null){
-            $this->message($player, 'Player ' . $targetName . ' is no longer online.');
             $this->openPanel($player);
             return;
         }
 
-        // Preserve the confirmed target identity across the asynchronous form round-trip.
-        $targetName = $target->getName();
-        $targetUuid = $target->getUniqueId()->toString();
+        // Preserve target UUID across the form round-trip, including offline accounts.
+        $targetName = $target->playerName;
+        $targetUuid = $target->uuid;
+        $targetPlayer = $this->onlinePlayerForAccount($target);
+        $targetLabel = $targetName . ($targetPlayer === null ? ' (offline)' : '');
 
         $description = match($mode){
-            'give' => 'Add ' . $this->formatMoney($amountMinor) . ' to ' . $target->getName() . "'s " . $bucket . ' balance?',
-            'take' => 'Remove ' . $this->formatMoney($amountMinor) . ' from ' . $target->getName() . "'s " . $bucket . ' balance?',
-            'set' => 'Set ' . $target->getName() . "'s " . $bucket . ' balance to ' . $this->formatMoney($amountMinor) . '?',
+            'give' => 'Add ' . $this->formatMoney($amountMinor) . ' to ' . $targetLabel . "'s " . $bucket . ' balance?',
+            'take' => 'Remove ' . $this->formatMoney($amountMinor) . ' from ' . $targetLabel . "'s " . $bucket . ' balance?',
+            'set' => 'Set ' . $targetLabel . "'s " . $bucket . ' balance to ' . $this->formatMoney($amountMinor) . '?',
             default => throw new \LogicException('Unsupported administrator panel action.')
         };
 
@@ -515,16 +518,17 @@ final class BankCommand{
                     return;
                 }
                 if($confirmed){
-                    $currentTarget = $this->plugin->getServer()->getPlayerExact($targetName);
-                    if($currentTarget === null || !PlayerIdentity::matches(
-                        $targetUuid,
-                        $currentTarget->getUniqueId()->toString()
-                    )){
-                        $this->message($formPlayer, 'The intended target is no longer online under the same account. No balance change was made.');
+                    try{
+                        $currentTarget = $this->resolveAccountByName($targetName);
+                    }catch(Throwable){
+                        $currentTarget = null;
+                    }
+                    if($currentTarget === null || !PlayerIdentity::matches($targetUuid, $currentTarget->uuid)){
+                        $this->message($formPlayer, 'The intended target account could not be verified. No balance change was made.');
                         $this->openPanel($formPlayer);
                         return;
                     }
-                    // handleAdmin still executes amount, audit, permission and cooldown checks.
+                    // handleAdmin still executes permission, cap, audit and cooldown checks.
                     $this->handleAdmin($formPlayer, [$mode, $targetName, $bucket, $amountInput]);
                 }
                 $this->openPanel($formPlayer);
@@ -532,25 +536,22 @@ final class BankCommand{
         ));
     }
 
-    /**
-     * @param list<string> $args
-     */
     private function handleBalance(CommandSender $sender, array $args) : void{
         if(isset($args[1])){
             if(!$sender->hasPermission('banksystem.admin')){
                 $this->message($sender, 'Only administrators can inspect another player account.');
                 return;
             }
-            $target = $this->findOnlinePlayer($sender, $args[1]);
-            if($target === null){
-                return;
+            $account = $this->findBankAccount($sender, $args[1]);
+            if($account !== null){
+                $this->showBalance($sender, $account);
             }
-            $player = $target;
-        }else{
-            $player = $this->requirePlayer($sender);
-            if($player === null){
-                return;
-            }
+            return;
+        }
+
+        $player = $this->requirePlayer($sender);
+        if($player === null){
+            return;
         }
 
         try{
@@ -562,9 +563,6 @@ final class BankCommand{
         }
     }
 
-    /**
-     * @param list<string> $args
-     */
     private function handleDeposit(CommandSender $sender, array $args) : void{
         $player = $this->requirePlayer($sender);
         if($player === null){
@@ -617,13 +615,20 @@ final class BankCommand{
             return;
         }
         if(count($args) !== 3){
-            $this->message($sender, 'Usage: /bank pay <online-player> <amount>');
+            $this->message($sender, 'Usage: /bank pay <player> <amount>');
             return;
         }
-        $target = $this->findOnlinePlayer($sender, $args[1]);
+
+        $target = $this->findBankAccount($sender, $args[1]);
         if($target === null){
             return;
         }
+        $sourceUuid = $player->getUniqueId()->toString();
+        if($target->uuid === $sourceUuid){
+            $this->message($sender, 'You cannot pay yourself.');
+            return;
+        }
+
         $amount = $this->parseAmount($sender, $args[2]);
         if($amount === null){
             return;
@@ -633,12 +638,15 @@ final class BankCommand{
             $this->service->transfer(
                 $player->getUniqueId()->toString(),
                 $player->getName(),
-                $target->getUniqueId()->toString(),
-                $target->getName(),
+                $target->uuid,
+                $target->playerName,
                 $amount
             );
-            $this->message($player, 'Sent ' . $this->formatMoney($amount) . ' to ' . $target->getName() . '.');
-            $this->message($target, 'Received ' . $this->formatMoney($amount) . ' from ' . $player->getName() . '.');
+            $this->message($player, 'Sent ' . $this->formatMoney($amount) . ' to ' . $target->playerName . '.');
+            $targetPlayer = $this->onlinePlayerForAccount($target);
+            if($targetPlayer !== null && $targetPlayer !== $player){
+                $this->message($targetPlayer, 'Received ' . $this->formatMoney($amount) . ' from ' . $player->getName() . '.');
+            }
         });
     }
 
@@ -713,7 +721,7 @@ final class BankCommand{
             return;
         }
         if(count($args) !== 4){
-            $this->message($sender, 'Usage: /bank admin <give|take|set> <online-player> <wallet|bank> <amount>');
+            $this->message($sender, 'Usage: /bank admin <give|take|set> <player> <wallet|bank> <amount>');
             return;
         }
 
@@ -728,7 +736,7 @@ final class BankCommand{
             return;
         }
 
-        $target = $this->findOnlinePlayer($sender, $args[1]);
+        $target = $this->findBankAccount($sender, $args[1]);
         if($target === null){
             return;
         }
@@ -741,23 +749,24 @@ final class BankCommand{
         $actorName = $sender->getName();
 
         $this->runTransaction($sender, function() use ($sender, $target, $mode, $bucket, $amount, $actorUuid, $actorName) : void{
-            $targetUuid = $target->getUniqueId()->toString();
-            $targetName = $target->getName();
             if($mode === 'give'){
-                $this->service->give($targetUuid, $targetName, $bucket, $amount, $actorUuid, $actorName);
+                $this->service->give($target->uuid, $target->playerName, $bucket, $amount, $actorUuid, $actorName);
             }elseif($mode === 'take'){
-                $this->service->take($targetUuid, $targetName, $bucket, $amount, $actorUuid, $actorName);
+                $this->service->take($target->uuid, $target->playerName, $bucket, $amount, $actorUuid, $actorName);
             }else{
-                $this->service->setBalance($targetUuid, $targetName, $bucket, $amount, $actorUuid, $actorName);
+                $this->service->setBalance($target->uuid, $target->playerName, $bucket, $amount, $actorUuid, $actorName);
             }
+
             if($mode === 'set'){
-                $this->message($sender, 'Admin set: ' . $targetName . ' ' . $bucket . ' balance set to ' . $this->formatMoney($amount) . '.');
+                $this->message($sender, 'Admin set: ' . $target->playerName . ' ' . $bucket . ' balance set to ' . $this->formatMoney($amount) . '.');
             }else{
                 $verb = $mode === 'give' ? 'Added ' : 'Removed ';
-                $this->message($sender, 'Admin ' . $mode . ': ' . $verb . $this->formatMoney($amount) . ' ' . ($mode === 'give' ? 'to ' : 'from ') . $targetName . ' ' . $bucket . '.');
+                $this->message($sender, 'Admin ' . $mode . ': ' . $verb . $this->formatMoney($amount) . ' ' . ($mode === 'give' ? 'to ' : 'from ') . $target->playerName . ' ' . $bucket . '.');
             }
-            if($target !== $sender){
-                $this->message($target, 'An administrator updated your ' . $bucket . ' balance.');
+
+            $targetPlayer = $this->onlinePlayerForAccount($target);
+            if($targetPlayer !== null && !($sender instanceof Player && $targetPlayer === $sender)){
+                $this->message($targetPlayer, 'An administrator updated your ' . $bucket . ' balance.');
             }
         });
     }
@@ -770,26 +779,59 @@ final class BankCommand{
     }
 
     private function showHelp(CommandSender $sender) : void{
-        $this->message($sender, 'Commands: /bank [panel], /bank balance, /bank deposit <amount>, /bank withdraw <amount>');
-        $this->message($sender, '/bank pay <online-player> <amount>, /bank top, /bank history [page]');
-        $this->message($sender, 'Admin: /bank admin <give|take|set> <online-player> <wallet|bank> <amount>');
+        $this->message($sender, 'Commands: /bank [panel], /bank balance [player], /bank deposit <amount>, /bank withdraw <amount>');
+        $this->message($sender, '/bank pay <player> <amount>, /bank top, /bank history [page]');
+        $this->message($sender, 'Admin: /bank admin <give|take|set> <player> <wallet|bank> <amount>');
     }
 
     private function requirePlayer(CommandSender $sender) : ?Player{
         if(!($sender instanceof Player)){
-            $this->message($sender, 'This command requires a player. Console may use /bank admin with an online target.');
+            $this->message($sender, 'This command requires a player. Console can use /bank admin with any saved bank account.');
             return null;
         }
         return $sender;
     }
 
-    private function findOnlinePlayer(CommandSender $sender, string $name) : ?Player{
-        $target = $this->plugin->getServer()->getPlayerExact($name);
-        if($target === null){
-            $this->message($sender, 'Player ' . $name . ' is not online. Use the exact in-game name.');
+    /**
+     * Prefers a live player's UUID; otherwise resolves only a previously saved account.
+     */
+    private function resolveAccountByName(string $name) : ?BankAccount{
+        $onlinePlayer = $this->plugin->getServer()->getPlayerExact($name);
+        if($onlinePlayer !== null){
+            return $this->service->getAccount($onlinePlayer->getUniqueId()->toString(), $onlinePlayer->getName());
+        }
+        return $this->service->findAccountByName($name);
+    }
+
+    private function findBankAccount(CommandSender $sender, string $name) : ?BankAccount{
+        try{
+            $account = $this->resolveAccountByName($name);
+        }catch(BankException $exception){
+            $this->message($sender, $exception->getMessage());
+            return null;
+        }catch(Throwable $exception){
+            $this->logReadError('account lookup', $exception);
+            $this->message($sender, 'Could not read that bank account. Check the server log.');
             return null;
         }
-        return $target;
+
+        if($account === null){
+            $this->message(
+                $sender,
+                'No saved bank account was found for ' . $name . '. The player must join at least once while BankSystem is enabled before offline banking can be used.'
+            );
+            return null;
+        }
+
+        return $account;
+    }
+
+    private function onlinePlayerForAccount(BankAccount $account) : ?Player{
+        $player = $this->plugin->getServer()->getPlayerExact($account->playerName);
+        if($player === null || !PlayerIdentity::matches($account->uuid, $player->getUniqueId()->toString())){
+            return null;
+        }
+        return $player;
     }
 
     private function parseAmount(CommandSender $sender, string $text, bool $allowZero = false) : ?int{

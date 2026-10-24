@@ -8,7 +8,7 @@ website: https://github.com/thedeverfankhajo-bot/Bank-system-
 commands:
   bank:
     description: Access your bank account
-    usage: "/bank [panel|balance|deposit|withdraw|pay|top|history|admin]"
+    usage: "/bank [panel|balance [player]|deposit|withdraw|pay <player> <amount>|top|history|admin]"
     aliases: [banking]
     permission: banksystem.use
 permissions:

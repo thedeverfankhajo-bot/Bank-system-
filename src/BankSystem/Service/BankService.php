@@ -37,6 +37,45 @@ final class BankService{
         return $account;
     }
 
+    /**
+     * Finds an existing account by its last-known player name.
+     *
+     * Offline names are not an identity by themselves, so this never creates an
+     * account or invents a UUID. If historical accounts share a name, callers must
+     * use an explicit UUID rather than risking a payment to the wrong account.
+     */
+    public function findAccountByName(string $playerName) : ?BankAccount{
+        $playerName = trim($playerName);
+        if($playerName === '' || strlen($playerName) > 64){
+            throw new BankException('A valid player name is required.');
+        }
+
+        $accounts = $this->repository->findAccountsByName($playerName);
+        if(count($accounts) > 1){
+            throw new BankException('More than one bank account matches that name. Use a UUID-based lookup to avoid ambiguity.');
+        }
+
+        return $accounts[0] ?? null;
+    }
+
+    /**
+     * Transfers to a known account by player name, including when its owner is offline.
+     * The recipient must already have a persisted BankSystem account.
+     */
+    public function transferToName(
+        string $fromUuid,
+        string $fromName,
+        string $toName,
+        int $amountMinor
+    ) : void{
+        $target = $this->findAccountByName($toName);
+        if($target === null){
+            throw new BankException('No saved bank account exists for that player. They must join at least once while BankSystem is enabled before offline transfers can be used.');
+        }
+
+        $this->transfer($fromUuid, $fromName, $target->uuid, $target->playerName, $amountMinor);
+    }
+
     public function deposit(string $uuid, string $playerName, int $amountMinor) : void{
         $this->guardTransactionAmount($amountMinor);
         $this->getAccount($uuid, $playerName);

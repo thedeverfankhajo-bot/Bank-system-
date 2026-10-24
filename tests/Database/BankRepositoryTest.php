@@ -28,6 +28,46 @@ final class BankRepositoryTest extends TestCase{
         parent::tearDown();
     }
 
+    public function testFindAccountsByNameIsCaseInsensitive() : void{
+        $matches = $this->repository->findAccountsByName('aLeX');
+
+        self::assertCount(1, $matches);
+        self::assertSame('player-a', $matches[0]->uuid);
+        self::assertSame('Alex', $matches[0]->playerName);
+    }
+
+    public function testFindAccountsByNameExposesAmbiguousHistoricalNames() : void{
+        $this->repository->ensureAccount('player-alex-2', 'alex', 0, 0);
+
+        $matches = $this->repository->findAccountsByName('ALEX');
+
+        self::assertCount(2, $matches);
+        self::assertContains('player-a', array_map(
+            static fn(\BankSystem\BankAccount $account) : string => $account->uuid,
+            $matches
+        ));
+        self::assertContains('player-alex-2', array_map(
+            static fn(\BankSystem\BankAccount $account) : string => $account->uuid,
+            $matches
+        ));
+    }
+
+    public function testKnownOfflineAccountCanBeUsedAsTransferRecipient() : void{
+        // A disconnected player is represented by their persisted account and stable UUID.
+        $offlineTarget = $this->repository->findAccountsByName('blAKE')[0];
+        $record = $this->repository->move(
+            'player-a', 'Alex',
+            'player-a', 'Alex',
+            $offlineTarget->uuid, $offlineTarget->playerName,
+            'pay', 1250, 'wallet', 'wallet', PHP_INT_MAX
+        );
+
+        self::assertSame('player-b', $record['to_uuid']);
+        self::assertSame('Blake', $record['to_name']);
+        self::assertSame(1250, $this->repository->getAccount('player-b')?->walletBalance);
+        self::assertCount(1, $this->repository->getHistory('player-b', 10, 0));
+    }
+
     public function testDepositMovesMoneyAndWritesOneLedgerEntry() : void{
         $record = $this->repository->move(
             'player-a', 'Alex',
