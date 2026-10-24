@@ -29,8 +29,8 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 
 ## Installation
 
-1. Download the source or build a plugin PHAR with DevTools.
-2. Place the plugin folder in `plugins/` for development (DevTools required), or put the generated `BankSystem.phar` in `plugins/`.
+1. Build a self-contained plugin PHAR with `php -d phar.readonly=0 tools/build-phar.php`. The output is `build/BankSystem.phar`. Alternatively, use DevTools for a development build.
+2. Put `build/BankSystem.phar` in the server's `plugins/` directory.
 3. Start the server once to generate `plugin_data/BankSystem/config.yml` and `bank.sqlite3`.
 4. Configure the currency and limits, then restart the server.
 
@@ -80,11 +80,12 @@ The API creates accounts on demand. Methods throw `BankException` for expected b
 
 ```sh
 composer install
-vendor/bin/phpunit
-find src tests -name '*.php' -print0 | xargs -0 -n1 php -l
+composer test
+composer lint
+php -d phar.readonly=0 tools/build-phar.php
 ```
 
-The repository workflow runs these checks on pushes and pull requests. The repository does not bundle PocketMine server binaries; a live-server smoke test must be run on a test server before production use.
+The CI workflow runs unit tests and static checks on PHP 8.1–8.4. A separate runtime smoke test downloads the official PocketMine-MP 5.44.3 PHAR and its matching official PHP 8.4 runtime, verifies their SHA-256 checksums, builds BankSystem.phar, and checks that the plugin initializes on a real PocketMine process. This startup smoke test is not a replacement for joining with a Bedrock client and exercising transactions in a staging server.
 
 ## Security and consistency
 
