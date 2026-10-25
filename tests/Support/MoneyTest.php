@@ -34,6 +34,15 @@ final class MoneyTest extends TestCase{
         self::assertSame('-$1.25', Money::format(-125));
     }
 
+    public function testFormatsCombinedBalancesWithoutIntegerOverflow() : void{
+        self::assertSame('$3.75', Money::formatSum(125, 250));
+        self::assertSame('€0.01', Money::formatSum(0, 1, '€'));
+        self::assertSame(
+            '$184,467,440,737,095,516.14',
+            Money::formatSum(PHP_INT_MAX, PHP_INT_MAX)
+        );
+    }
+
     public function testFormatsMinimumIntegerWithoutOverflow() : void{
         self::assertSame('-$92,233,720,368,547,758.08', Money::format(PHP_INT_MIN));
     }
