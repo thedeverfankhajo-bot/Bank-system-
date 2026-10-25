@@ -53,14 +53,14 @@ final class Money{
      */
     public static function formatSum(int $leftMinor, int $rightMinor, string $symbol = '$') : string{
         if($leftMinor < 0 || $rightMinor < 0){
-            throw new \\InvalidArgumentException('Balances cannot be negative.');
+            throw new \InvalidArgumentException('Balances cannot be negative.');
         }
 
         $minor = self::addNonNegativeIntegerStrings((string) $leftMinor, (string) $rightMinor);
         $minor = str_pad($minor, 3, '0', STR_PAD_LEFT);
         $whole = ltrim(substr($minor, 0, -2), '0');
         $whole = $whole === '' ? '0' : $whole;
-        $whole = preg_replace('/\\\\B(?=(\\\\d{3})+(?!\\\\d))/', ',', $whole) ?? $whole;
+        $whole = preg_replace('/\\B(?=(\\d{3})+(?!\\d))/', ',', $whole) ?? $whole;
 
         return $symbol . $whole . '.' . substr($minor, -2);
     }

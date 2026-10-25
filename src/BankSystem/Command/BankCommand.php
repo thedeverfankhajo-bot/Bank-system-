@@ -133,7 +133,7 @@ final class BankCommand{
                 "§7WALLET BALANCE\n§f" . $this->formatMoney($account->walletBalance) . "\n\n" .
                 "§7BANK SAVINGS\n§a" . $this->formatMoney($account->bankBalance) . "\n\n" .
                 "§8------------------------------\n" .
-                "§7TOTAL FUNDS  §f§l" . $this->Money::formatSum($account->walletBalance, $account->bankBalance, $this->plugin->getCurrencySymbol()) . "\n" .
+                "§7TOTAL FUNDS  §f§l" . Money::formatSum($account->walletBalance, $account->bankBalance, $this->plugin->getCurrencySymbol()) . "\n" .
                 "§8------------------------------\n\n" .
                 "§7Choose a service below.\n" .
                 "§8Your account is linked to your player UUID.\n\n" .
