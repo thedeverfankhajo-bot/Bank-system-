@@ -10,6 +10,8 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 
 **Recommended:** download [`BankSystem.phar`](https://github.com/thedeverfankhajo-bot/Bank-system-/releases/latest/download/BankSystem.phar) and its [`SHA-256 checksum`](https://github.com/thedeverfankhajo-bot/Bank-system-/releases/latest/download/BankSystem.phar.sha256) from [GitHub Releases](https://github.com/thedeverfankhajo-bot/Bank-system-/releases). The direct-download links work when the latest published release includes these assets.
 
+**Temporary build while the first release is pending:** download the [validated BankSystem-API5-PHAR artifact](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/runs/40510787736). It contains the PHAR and checksum and expires on **10 November 2026**.
+
 1. Download both files from the same release.
 2. Verify the downloaded PHAR from the directory containing both files with `sha256sum --check BankSystem.phar.sha256` (Linux/macOS). On Windows, compare the output of `Get-FileHash .\BankSystem.phar -Algorithm SHA256` with the checksum file.
 3. Copy `BankSystem.phar` into the PocketMine-MP server's `plugins/` directory.
