@@ -36,6 +36,31 @@ final class BankServiceAuthorizationTest extends TestCase{
         }
     }
 
+    public function testGetAccountDoesNotCreateOrRenameAnAccountFromCallerSuppliedName() : void{
+        $repository = new \BankSystem\Database\BankRepository(':memory:');
+        $repository->ensureAccount('victim-uuid', 'Victim', 500, 750);
+        $service = $this->serviceWithoutConstructor();
+        $repositoryProperty = new \ReflectionProperty(BankService::class, 'repository');
+        $repositoryProperty->setValue($service, $repository);
+
+        try{
+            $account = $service->getAccount('victim-uuid', 'ImpersonatedName');
+            self::assertSame('Victim', $account->playerName);
+            self::assertSame(500, $account->walletBalance);
+            self::assertSame(750, $account->bankBalance);
+
+            try{
+                $service->getAccount('new-arbitrary-uuid', 'InventedPlayer');
+                self::fail('getAccount() unexpectedly created a new account from caller-supplied identity.');
+            }catch(BankException){
+            }
+
+            self::assertNull($repository->getAccount('new-arbitrary-uuid'));
+        }finally{
+            $repository->close();
+        }
+    }
+
     public function testLegacyPlayerTransactionApiRejectsCallerSuppliedIdentity() : void{
         $service = $this->serviceWithoutConstructor();
         $calls = [

@@ -22,20 +22,37 @@ final class BankService{
     ){
     }
 
+    /**
+     * Returns an already-registered account by stable UUID.
+     *
+     * The legacy playerName argument remains for source compatibility but is never used
+     * to create an account or change its stored identity. Register live accounts using
+     * getAccountForPlayer() or registerOnlinePlayer() with a real PocketMine Player.
+     */
     public function getAccount(string $uuid, string $playerName) : BankAccount{
-        if(trim($uuid) === '' || trim($playerName) === ''){
+        $uuid = trim($uuid);
+        if($uuid === '' || trim($playerName) === ''){
             throw new BankException('A valid player UUID and name are required.');
         }
 
-        $this->repository->ensureAccount(
-            $uuid,
-            $playerName,
-            $this->configuredAmount('balances.initial-wallet', '0.00'),
-            $this->configuredAmount('balances.initial-bank', '0.00')
-        );
         $account = $this->repository->getAccount($uuid);
         if($account === null){
-            throw new BankException('Could not load the bank account.');
+            throw new BankException('No registered bank account exists for that UUID. A live player must be registered, or the recipient must be resolved through a verified offline identity.');
+        }
+        return $account;
+    }
+
+    /**
+     * Gets the account for a connected Player, repairing a missing or stale registration
+     * only from that real Player's UUID/XUID. Caller-supplied identity strings are not used.
+     */
+    public function getAccountForPlayer(Player $player) : BankAccount{
+        $this->assertLivePlayer($player);
+        $uuid = $player->getUniqueId()->toString();
+        $account = $this->repository->getAccount($uuid);
+        if($account === null || $account->playerName !== $player->getName() ||
+            ($player->getXuid() !== '' && $account->xuid !== $player->getXuid())){
+            return $this->registerOnlinePlayer($player);
         }
         return $account;
     }
@@ -256,7 +273,7 @@ final class BankService{
 
         $onlineTarget = $this->plugin->getServer()->getPlayerExact($toName);
         $target = $onlineTarget !== null
-            ? $this->getAccount($onlineTarget->getUniqueId()->toString(), $onlineTarget->getName())
+            ? $this->getAccountForPlayer($onlineTarget)
             : $this->findAccountByName($toName);
         if($target === null){
             throw new BankException('No saved or verifiable offline account exists for that player. Offline account creation requires PocketMine saved XUID data; otherwise the player must join the server first.');
@@ -329,9 +346,9 @@ final class BankService{
     ) : void{
         $identity = $this->administratorIdentity($actor);
         $this->guardTransactionAmount($amountMinor);
-        $this->getAccount($targetUuid, $targetName);
+        $target = $this->getAccount($targetUuid, $targetName);
         $this->publish($this->repository->adjustBalance(
-            $identity['uuid'], $identity['name'], $targetUuid, $targetName, $bucket, 'give', $amountMinor,
+            $identity['uuid'], $identity['name'], $target->uuid, $target->playerName, $bucket, 'give', $amountMinor,
             $this->configuredAmount('limits.max-transaction', '1000000.00')
         ));
     }
@@ -345,9 +362,9 @@ final class BankService{
     ) : void{
         $identity = $this->administratorIdentity($actor);
         $this->guardTransactionAmount($amountMinor);
-        $this->getAccount($targetUuid, $targetName);
+        $target = $this->getAccount($targetUuid, $targetName);
         $this->publish($this->repository->adjustBalance(
-            $identity['uuid'], $identity['name'], $targetUuid, $targetName, $bucket, 'take', $amountMinor,
+            $identity['uuid'], $identity['name'], $target->uuid, $target->playerName, $bucket, 'take', $amountMinor,
             $this->configuredAmount('limits.max-transaction', '1000000.00')
         ));
     }
@@ -363,9 +380,9 @@ final class BankService{
         if($amountMinor < 0){
             throw new BankException('A balance cannot be negative.');
         }
-        $this->getAccount($targetUuid, $targetName);
+        $target = $this->getAccount($targetUuid, $targetName);
         $this->publish($this->repository->adjustBalance(
-            $identity['uuid'], $identity['name'], $targetUuid, $targetName, $bucket, 'set', $amountMinor,
+            $identity['uuid'], $identity['name'], $target->uuid, $target->playerName, $bucket, 'set', $amountMinor,
             $this->configuredAmount('limits.max-transaction', '1000000.00')
         ));
     }

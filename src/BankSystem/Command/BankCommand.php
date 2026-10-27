@@ -104,7 +104,7 @@ final class BankCommand{
 
         try{
             $accountUuid = $player->getUniqueId()->toString();
-            $account = $this->service->getAccount($accountUuid, $player->getName());
+            $account = $this->service->getAccountForPlayer($player);
             $activityText = "§6§lRECENT ACTIVITY\n§8------------------------------\n§7Recent activity is temporarily unavailable.";
             try{
                 $activityText = BankDashboardActivity::render(
@@ -566,7 +566,7 @@ final class BankCommand{
         }
 
         try{
-            $account = $this->service->getAccount($player->getUniqueId()->toString(), $player->getName());
+            $account = $this->service->getAccountForPlayer($player);
             $this->showBalance($sender, $account);
         }catch(Throwable $exception){
             $this->logReadError('balance', $exception);
@@ -832,7 +832,7 @@ final class BankCommand{
     private function resolveAccountByName(string $name) : ?BankAccount{
         $onlinePlayer = $this->plugin->getServer()->getPlayerExact($name);
         if($onlinePlayer !== null){
-            return $this->service->getAccount($onlinePlayer->getUniqueId()->toString(), $onlinePlayer->getName());
+            return $this->service->getAccountForPlayer($onlinePlayer);
         }
         return $this->service->findAccountByName($name);
     }

@@ -91,12 +91,12 @@ use BankSystem\Main;
 $plugin = $this->getServer()->getPluginManager()->getPlugin("BankSystem");
 if($plugin instanceof Main){
     $service = $plugin->getBankService();
-    $account = $service->getAccount($player->getUniqueId()->toString(), $player->getName());
+    $account = $service->getAccountForPlayer($player);
     $service->depositAs($player, 1250);
 }
 ```
 
-The `getAccount($uuid, $name)` API retains its legacy create-on-first-access behaviour; only call it with a trusted UUID/name pair. Use `findAccountByUuid($uuid)` for a read-only lookup. Player mutations must use actor-bound methods (`depositAs`, `withdrawAs`, `transferAs`, `transferToNameAs`) with the actual connected `Player`; they enforce `banksystem.use` and do not trust caller-supplied source UUID/name strings. The legacy `deposit`, `withdraw`, `transfer`, `transferToName`, and `registerOnlineAccount` signatures are retained but fail closed with `BankException`. Expected business-rule failures should be handled; database failures are not converted into successful transactions. Successful mutations dispatch `BankTransactionEvent` after commit, and event listeners cannot cancel a committed transaction.
+The `getAccountForPlayer($player)` API derives identity from the connected PocketMine `Player` and registers the account securely if needed. `getAccount($uuid, $name)` remains available but is read-only: it never creates or renames accounts from the supplied name. Use `findAccountByUuid($uuid)` for a nullable lookup. Player mutations must use actor-bound methods (`depositAs`, `withdrawAs`, `transferAs`, `transferToNameAs`) with the actual connected `Player`; they enforce `banksystem.use` and do not trust caller-supplied source UUID/name strings. The legacy `deposit`, `withdraw`, `transfer`, `transferToName`, and `registerOnlineAccount` signatures are retained but fail closed with `BankException`. Expected business-rule failures should be handled; database failures are not converted into successful transactions. Successful mutations dispatch `BankTransactionEvent` after commit, and event listeners cannot cancel a committed transaction.
 
 Administrative API operations must be authorized with the real PocketMine `CommandSender`: use `giveAs($sender, $targetUuid, $targetName, $bucket, $amountMinor)`, `takeAs(...)`, and `setBalanceAs(...)`. Each call independently checks `banksystem.admin` and derives audit actor identity from the sender. The older `give()`, `take()`, and `setBalance()` signatures that accept caller-supplied actor UUID/name are retained but now throw `BankException` without changing money; those strings cannot securely prove authorization. See [docs/API.md](docs/API.md) for the full contract.
 

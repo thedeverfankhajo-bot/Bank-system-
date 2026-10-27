@@ -9,12 +9,15 @@ BankSystem exposes its service through the main plugin class. API calls use inte
         return;
     }
     $bank = $plugin->getBankService();
-    $account = $bank->getAccount($player->getUniqueId()->toString(), $player->getName());
+    $account = $bank->getAccountForPlayer($player);
 
 ## Public operations
 
-- getAccount(string $uuid, string $playerName): BankAccount
-- findAccountByUuid(string $uuid): ?BankAccount — reads an existing account by stable UUID without creating it
+`getAccount()` no longer creates accounts or mutates the stored display name from a caller-supplied string; it only returns an existing UUID-keyed account. Use `getAccountForPlayer($player)` or `registerOnlinePlayer($player)` for live account registration. Offline account creation remains limited to `findAccountByName()` when PocketMine's saved XUID verifies the identity.
+
+- getAccountForPlayer(Player $player): BankAccount — returns an authenticated live account, registering it safely if necessary
+- getAccount(string $uuid, string $playerName): BankAccount — read-only lookup by UUID; the legacy name argument is not trusted for account creation or renaming
+- findAccountByUuid(string $uuid): ?BankAccount — read-only lookup by stable UUID
 - findAccountByName(string $playerName): ?BankAccount — resolves an existing account or creates a verifiable offline account from PocketMine's saved XUID; throws if ambiguous or conflicting
 - validateTransactionAmount(int $amountMinor): void — checks positivity and the configured per-transaction cap before resolving an offline recipient
 - registerOnlinePlayer(Player $player): BankAccount — registers an authenticated live player and reconciles a verified offline identity
