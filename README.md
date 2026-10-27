@@ -2,6 +2,19 @@
 
 A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP API 5.
 
+[![CI](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/ci.yml) [![PHP Security](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/php-security.yml/badge.svg?branch=main)](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/php-security.yml) [![Latest release](https://img.shields.io/github/v/release/thedeverfankhajo-bot/Bank-system-?display_name=tag)](https://github.com/thedeverfankhajo-bot/Bank-system-/releases)
+
+## Download and install
+
+**Recommended:** download [`BankSystem.phar`](https://github.com/thedeverfankhajo-bot/Bank-system-/releases/latest/download/BankSystem.phar) and its [`SHA-256 checksum`](https://github.com/thedeverfankhajo-bot/Bank-system-/releases/latest/download/BankSystem.phar.sha256) from [GitHub Releases](https://github.com/thedeverfankhajo-bot/Bank-system-/releases). The direct-download links become available after the first release is published.
+
+1. Download both files from the same release.
+2. Verify the downloaded PHAR from the directory containing both files with `sha256sum --check BankSystem.phar.sha256` (Linux/macOS). On Windows, compare the output of `Get-FileHash .\BankSystem.phar -Algorithm SHA256` with the checksum file.
+3. Copy `BankSystem.phar` into the PocketMine-MP server's `plugins/` directory.
+4. Restart the server, then run `/bank` in-game.
+
+If no release is published yet, open the [Publish PHAR release workflow](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/release.yml), choose **Run workflow** on `main`, and enter the version in `plugin.yml` with a `v` prefix (currently `v1.0.2`). The workflow validates the project, builds the PHAR, calculates its checksum, and publishes both assets.
+
 ## Documentation
 
 - [فارسی — راهنمای فارسی](README.fa.md)
@@ -28,7 +41,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 - PocketMine-MP API 5.0.0 or newer in the 5.x API series.
 - PHP 8.1+ with the `sqlite3` extension (provided by supported PocketMine-MP distributions).
 
-## Installation
+## Build from source (development)
 
 1. Build a self-contained plugin PHAR with `php -d phar.readonly=0 tools/build-phar.php`. The output is `build/BankSystem.phar`. Alternatively, use DevTools for a development build.
 2. Put `build/BankSystem.phar` in the server's `plugins/` directory.
