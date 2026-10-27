@@ -13,6 +13,8 @@ final class BankPanelForm implements Form{
      * @param list<array{text: string, action: string}> $buttons
      * @param list<array<string, mixed>> $elements
      */
+    private bool $handled = false;
+
     private function __construct(
         private readonly string $type,
         private readonly string $title,
@@ -109,9 +111,15 @@ final class BankPanelForm implements Form{
     }
 
     public function handleResponse(Player $player, $data) : void{
-        // Closing a Bedrock form produces null. Treat it as cancellation, never as a
-        // default choice or an implicit transaction.
+        // A form instance is single-use once a valid response or dismissal is received.
+        // Mark it before dispatch so a throwing handler or duplicate packet cannot replay
+        // the same financial action. Invalid payloads are rejected without consuming it.
+        if($this->handled){
+            return;
+        }
+
         if($data === null){
+            $this->handled = true;
             return;
         }
 
@@ -119,6 +127,7 @@ final class BankPanelForm implements Form{
             if(!is_bool($data)){
                 return;
             }
+            $this->handled = true;
             ($this->handler)($player, $data);
             return;
         }
@@ -127,6 +136,7 @@ final class BankPanelForm implements Form{
             if(!is_int($data) || !array_key_exists($data, $this->buttons)){
                 return;
             }
+            $this->handled = true;
             ($this->handler)($player, $this->buttons[$data]['action']);
             return;
         }
@@ -137,6 +147,7 @@ final class BankPanelForm implements Form{
         if(!is_array($data) || !array_is_list($data) || count($data) !== count($this->elements)){
             return;
         }
+        $this->handled = true;
         ($this->handler)($player, $data);
     }
 }
