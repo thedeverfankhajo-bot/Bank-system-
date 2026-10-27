@@ -98,6 +98,8 @@ if($plugin instanceof Main){
 
 The `getAccount($uuid, $name)` API creates an account if it does not exist; use `findAccountByUuid($uuid)` for a read-only lookup. Methods throw `BankException` for expected business-rule failures; callers should handle it. Database failures are not converted into successful transactions. Successful mutations dispatch `BankTransactionEvent` after the database commit. Event listeners should not assume an event can cancel a committed transaction.
 
+Administrative API operations must be authorized with the real PocketMine `CommandSender`: use `giveAs($sender, $targetUuid, $targetName, $bucket, $amountMinor)`, `takeAs(...)`, and `setBalanceAs(...)`. Each call independently checks `banksystem.admin` and derives audit actor identity from the sender. The older `give()`, `take()`, and `setBalance()` signatures that accept caller-supplied actor UUID/name are retained but now throw `BankException` without changing money; those strings cannot securely prove authorization. See [docs/API.md](docs/API.md) for the full contract.
+
 ## PHP security analysis
 
 The separate `.github/workflows/php-security.yml` workflow runs Semgrep's PHP rules across `src/` and `tests/` and uploads SARIF results to GitHub Code Scanning. It complements unit tests, syntax lint, and `composer audit`; it is not a guarantee that all vulnerabilities will be found. The existing CodeQL workflow analyzes GitHub Actions workflow files, not PHP source.
