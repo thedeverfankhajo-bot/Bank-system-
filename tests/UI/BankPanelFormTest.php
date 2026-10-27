@@ -54,7 +54,7 @@ final class BankPanelFormTest extends TestCase{
         self::assertSame(0, $calls);
     }
 
-    public function testModalFormUsesNativeSchemaAndDispatchesBothButtons() : void{
+    public function testModalFormUsesNativeSchemaAndDispatchesOnlyTheFirstResponse() : void{
         $responses = [];
         $form = BankPanelForm::modal(
             'Confirm transfer',
@@ -76,7 +76,24 @@ final class BankPanelFormTest extends TestCase{
 
         $form->handleResponse(new Player(), true);
         $form->handleResponse(new Player(), false);
-        self::assertSame([true, false], $responses);
+        self::assertSame([true], $responses);
+    }
+
+    public function testModalCancellationIsAlsoSingleUse() : void{
+        $responses = [];
+        $form = BankPanelForm::modal(
+            'Confirm transfer',
+            'Send $10.00 to Alex?',
+            'Confirm',
+            'Cancel',
+            static function(Player $player, bool $confirmed) use (&$responses) : void{
+                $responses[] = $confirmed;
+            }
+        );
+
+        $form->handleResponse(new Player(), false);
+        $form->handleResponse(new Player(), true);
+        self::assertSame([false], $responses);
     }
 
     public function testModalFormIgnoresInvalidResponsesAndClosingTheForm() : void{
@@ -142,6 +159,7 @@ final class BankPanelFormTest extends TestCase{
         self::assertSame(0, $calls);
 
         $form->handleResponse(new Player(), [null, '10.00']);
+        $form->handleResponse(new Player(), [null, '999.00']);
         self::assertSame(1, $calls);
         self::assertSame([null, '10.00'], $received);
     }
