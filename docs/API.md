@@ -21,9 +21,11 @@ BankSystem exposes its service through the main plugin class. API calls use inte
 - deposit(string $uuid, string $playerName, int $amountMinor): void
 - withdraw(string $uuid, string $playerName, int $amountMinor): void
 - transfer(string $fromUuid, string $fromName, string $toUuid, string $toName, int $amountMinor): void
-- give(string $targetUuid, string $targetName, string $bucket, int $amountMinor, string $actorUuid, string $actorName): void
-- take(string $targetUuid, string $targetName, string $bucket, int $amountMinor, string $actorUuid, string $actorName): void
-- setBalance(string $targetUuid, string $targetName, string $bucket, int $amountMinor, string $actorUuid, string $actorName): void
+- giveAs(CommandSender $actor, string $targetUuid, string $targetName, string $bucket, int $amountMinor): void
+- takeAs(CommandSender $actor, string $targetUuid, string $targetName, string $bucket, int $amountMinor): void
+- setBalanceAs(CommandSender $actor, string $targetUuid, string $targetName, string $bucket, int $amountMinor): void
+
+The legacy `give()`, `take()`, and `setBalance()` signatures that accept caller-supplied actor UUID/name are retained for source discovery but now throw `BankException` without changing balances. Those strings cannot prove who authorized an administrator operation. Use the `*As()` methods and pass the real PocketMine `CommandSender`; the service re-checks `banksystem.admin` itself and records the actor identity from that sender. Never forward a player name or UUID received from an untrusted request as an actor identity.
 - getTopAccounts(int $limit = 10): list of BankAccount
 - getHistory(string $uuid, int $limit = 10, int $offset = 0): list of transaction records
 
@@ -47,7 +49,7 @@ try{
 }
 ```
 
-For an administrative operation against a known offline account, use `findAccountByUuid($uuid)` when the UUID is known and pass the returned account's stored UUID and last-known name to `give()`, `take()`, or `setBalance()`. This UUID lookup does not create an account. If you only know the last-known name, use `findAccountByName()` and handle missing or ambiguous results. Do not create a UUID from a username.
+For an administrative operation against a known offline account, use `findAccountByUuid($uuid)` when the UUID is known, or safely resolve it with `findAccountByName()`, then pass the stored UUID and last-known name to `giveAs($sender, ...)`, `takeAs($sender, ...)`, or `setBalanceAs($sender, ...)`. These methods require the actual `CommandSender` to have `banksystem.admin`. The UUID lookup does not create an account. If you only know the last-known name, use `findAccountByName()` and handle missing or ambiguous results. Do not create a UUID from a username.
 
 ## Transaction event
 
