@@ -589,7 +589,7 @@ final class BankCommand{
         }
 
         if($this->runTransaction($sender, function() use ($player, $amount) : void{
-            $this->service->deposit($player->getUniqueId()->toString(), $player->getName(), $amount);
+            $this->service->depositAs($player, $amount);
         })){
             $this->notifyAfterCommit($player, 'Deposited ' . $this->formatMoney($amount) . ' into your bank.', 'deposit notification');
         }
@@ -613,7 +613,7 @@ final class BankCommand{
         }
 
         if($this->runTransaction($sender, function() use ($player, $amount) : void{
-            $this->service->withdraw($player->getUniqueId()->toString(), $player->getName(), $amount);
+            $this->service->withdrawAs($player, $amount);
         })){
             $this->notifyAfterCommit($player, 'Withdrew ' . $this->formatMoney($amount) . ' into your wallet.', 'withdraw notification');
         }
@@ -655,13 +655,7 @@ final class BankCommand{
         }
 
         if(!$this->runTransaction($sender, function() use ($player, $target, $amount) : void{
-            $this->service->transfer(
-                $player->getUniqueId()->toString(),
-                $player->getName(),
-                $target->uuid,
-                $target->playerName,
-                $amount
-            );
+            $this->service->transferAs($player, $target->uuid, $amount);
         })){
             return;
         }

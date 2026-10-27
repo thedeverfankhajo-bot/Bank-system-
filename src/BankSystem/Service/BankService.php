@@ -40,12 +40,23 @@ final class BankService{
     }
 
     /**
-     * Registers a live player and links any previously created XUID-backed offline account.
-     * This is called on join so the player returns to the exact same balance and history.
+     * @deprecated Caller-supplied UUID/name/XUID values cannot prove a live player identity.
+     * Use registerOnlinePlayer() with the actual PocketMine Player instance.
      */
     public function registerOnlineAccount(string $uuid, string $playerName, string $xuid) : BankAccount{
+        throw new BankException('The legacy account registration API is disabled because caller-supplied identity strings are not verifiable. Use registerOnlinePlayer() with the actual Player instance.');
+    }
+
+    /**
+     * Registers an authenticated live player and atomically links any XUID-backed offline account.
+     */
+    public function registerOnlinePlayer(Player $player) : BankAccount{
+        $this->assertLivePlayer($player);
+        $uuid = $player->getUniqueId()->toString();
+        $playerName = $player->getName();
+        $xuid = $player->getXuid();
         if(trim($uuid) === '' || trim($playerName) === ''){
-            throw new BankException('A valid player UUID and name are required.');
+            throw new BankException('A valid live player UUID and name are required.');
         }
 
         $initialWallet = $this->configuredAmount('balances.initial-wallet', '0.00');
@@ -57,6 +68,7 @@ final class BankService{
         }
         return $account;
     }
+
 
     /**
      * Looks up an existing account by its stable UUID without creating it.
@@ -141,16 +153,104 @@ final class BankService{
     }
 
     /**
-     * Transfers to a known account by player name, including a verified offline XUID account.
-     * The recipient may be online or offline; no identity is created from the name alone.
+     * @deprecated Caller-supplied player identities are not verifiable. Use transferToNameAs().
      */
-    public function transferToName(
-        string $fromUuid,
-        string $fromName,
-        string $toName,
-        int $amountMinor
-    ) : void{
-        // Invalid API calls must fail before a name lookup can create an offline account.
+    public function transferToName(string $fromUuid, string $fromName, string $toName, int $amountMinor) : void{
+        throw new BankException('The legacy transferToName() API is disabled because caller-supplied source identity is not verifiable. Use transferToNameAs() with the actual Player instance.');
+    }
+
+    /**
+     * @deprecated Caller-supplied player identities are not verifiable. Use depositAs().
+     */
+    public function deposit(string $uuid, string $playerName, int $amountMinor) : void{
+        throw new BankException('The legacy deposit() API is disabled because caller-supplied identity is not verifiable. Use depositAs() with the actual Player instance.');
+    }
+
+    /**
+     * @deprecated Caller-supplied player identities are not verifiable. Use withdrawAs().
+     */
+    public function withdraw(string $uuid, string $playerName, int $amountMinor) : void{
+        throw new BankException('The legacy withdraw() API is disabled because caller-supplied identity is not verifiable. Use withdrawAs() with the actual Player instance.');
+    }
+
+    /**
+     * @deprecated Caller-supplied source identity is not verifiable. Use transferAs().
+     */
+    public function transfer(string $fromUuid, string $fromName, string $toUuid, string $toName, int $amountMinor) : void{
+        throw new BankException('The legacy transfer() API is disabled because caller-supplied source identity is not verifiable. Use transferAs() with the actual Player instance.');
+    }
+
+    /**
+     * Deposits from the authenticated player's wallet into their bank account.
+     */
+    public function depositAs(Player $actor, int $amountMinor) : void{
+        $identity = $this->playerIdentity($actor);
+        $this->guardTransactionAmount($amountMinor);
+        $this->getAccount($identity['uuid'], $identity['name']);
+        $record = $this->repository->move(
+            $identity['uuid'], $identity['name'],
+            $identity['uuid'], $identity['name'],
+            $identity['uuid'], $identity['name'],
+            'deposit', $amountMinor, 'wallet', 'bank',
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
+        );
+        $this->publish($record);
+    }
+
+    /**
+     * Withdraws from the authenticated player's bank account into their wallet.
+     */
+    public function withdrawAs(Player $actor, int $amountMinor) : void{
+        $identity = $this->playerIdentity($actor);
+        $this->guardTransactionAmount($amountMinor);
+        $this->getAccount($identity['uuid'], $identity['name']);
+        $record = $this->repository->move(
+            $identity['uuid'], $identity['name'],
+            $identity['uuid'], $identity['name'],
+            $identity['uuid'], $identity['name'],
+            'withdraw', $amountMinor, 'bank', 'wallet',
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
+        );
+        $this->publish($record);
+    }
+
+    /**
+     * Transfers from the authenticated player's wallet to an existing UUID-keyed account.
+     * Destination identity is loaded from storage; caller-supplied display names are never trusted.
+     */
+    public function transferAs(Player $actor, string $toUuid, int $amountMinor) : void{
+        $identity = $this->playerIdentity($actor);
+        $this->guardTransactionAmount($amountMinor);
+        $toUuid = trim($toUuid);
+        if($toUuid === ''){
+            throw new BankException('A valid destination account UUID is required.');
+        }
+        if($identity['uuid'] === $toUuid){
+            throw new BankException('You cannot pay yourself.');
+        }
+
+        $this->getAccount($identity['uuid'], $identity['name']);
+        $target = $this->repository->getAccount($toUuid);
+        if($target === null){
+            throw new BankException('The destination bank account could not be found or verified.');
+        }
+
+        $record = $this->repository->move(
+            $identity['uuid'], $identity['name'],
+            $identity['uuid'], $identity['name'],
+            $target->uuid, $target->playerName,
+            'pay', $amountMinor, 'wallet', 'wallet',
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
+        );
+        $this->publish($record);
+    }
+
+    /**
+     * Transfers to a verified online or saved offline account by name.
+     * An offline account can be bootstrapped only from PocketMine's saved XUID.
+     */
+    public function transferToNameAs(Player $actor, string $toName, int $amountMinor) : void{
+        $identity = $this->playerIdentity($actor);
         $this->guardTransactionAmount($amountMinor);
 
         $onlineTarget = $this->plugin->getServer()->getPlayerExact($toName);
@@ -160,59 +260,13 @@ final class BankService{
         if($target === null){
             throw new BankException('No saved or verifiable offline account exists for that player. Offline account creation requires PocketMine saved XUID data; otherwise the player must join the server first.');
         }
-
-        $this->transfer($fromUuid, $fromName, $target->uuid, $target->playerName, $amountMinor);
-    }
-
-    public function deposit(string $uuid, string $playerName, int $amountMinor) : void{
-        $this->guardTransactionAmount($amountMinor);
-        $this->getAccount($uuid, $playerName);
-        $record = $this->repository->move(
-            $uuid, $playerName,
-            $uuid, $playerName,
-            $uuid, $playerName,
-            'deposit', $amountMinor, 'wallet', 'bank',
-            $this->configuredAmount('limits.max-transaction', '1000000.00')
-        );
-        $this->publish($record);
-    }
-
-    public function withdraw(string $uuid, string $playerName, int $amountMinor) : void{
-        $this->guardTransactionAmount($amountMinor);
-        $this->getAccount($uuid, $playerName);
-        $record = $this->repository->move(
-            $uuid, $playerName,
-            $uuid, $playerName,
-            $uuid, $playerName,
-            'withdraw', $amountMinor, 'bank', 'wallet',
-            $this->configuredAmount('limits.max-transaction', '1000000.00')
-        );
-        $this->publish($record);
-    }
-
-    public function transfer(
-        string $fromUuid,
-        string $fromName,
-        string $toUuid,
-        string $toName,
-        int $amountMinor
-    ) : void{
-        $this->guardTransactionAmount($amountMinor);
-        if($fromUuid === $toUuid){
+        if($target->uuid === $identity['uuid']){
             throw new BankException('You cannot pay yourself.');
         }
-        $this->getAccount($fromUuid, $fromName);
-        $this->getAccount($toUuid, $toName);
 
-        $record = $this->repository->move(
-            $fromUuid, $fromName,
-            $fromUuid, $fromName,
-            $toUuid, $toName,
-            'pay', $amountMinor, 'wallet', 'wallet',
-            $this->configuredAmount('limits.max-transaction', '1000000.00')
-        );
-        $this->publish($record);
+        $this->transferAs($actor, $target->uuid, $amountMinor);
     }
+
 
     /**
      * Legacy signature retained so integrations fail safely rather than silently spoofing
@@ -316,6 +370,34 @@ final class BankService{
     }
 
     /**
+     * Requires the exact Player object that is currently connected to this server.
+     */
+    private function assertLivePlayer(Player $player) : void{
+        $livePlayer = $this->plugin->getServer()->getPlayerExact($player->getName());
+        if($livePlayer === null || $livePlayer !== $player ||
+            $livePlayer->getUniqueId()->toString() !== $player->getUniqueId()->toString()){
+            throw new BankException('The player must remain connected to make a banking transaction.');
+        }
+    }
+
+    /**
+     * Resolves a live, authorized player identity instead of trusting external UUID/name strings.
+     *
+     * @return array{uuid: string, name: string}
+     */
+    private function playerIdentity(Player $actor) : array{
+        if(!$actor->hasPermission('banksystem.use')){
+            throw new BankException('Permission banksystem.use is required for player banking transactions.');
+        }
+        $this->assertLivePlayer($actor);
+
+        return [
+            'uuid' => $actor->getUniqueId()->toString(),
+            'name' => $actor->getName()
+        ];
+    }
+
+    /**
      * @return array{uuid: string, name: string}
      */
     private function administratorIdentity(CommandSender $actor) : array{
@@ -323,11 +405,23 @@ final class BankService{
             throw new BankException('Administrator permission banksystem.admin is required for balance changes.');
         }
 
-        return [
-            'uuid' => $actor instanceof Player ? $actor->getUniqueId()->toString() : 'console',
-            'name' => $actor->getName()
-        ];
+        if($actor instanceof Player){
+            $this->assertLivePlayer($actor);
+            return [
+                'uuid' => $actor->getUniqueId()->toString(),
+                'name' => $actor->getName()
+            ];
+        }
+
+        // Do not accept arbitrary classes implementing CommandSender: an integration
+        // could otherwise fabricate an object whose hasPermission() always returns true.
+        if($actor !== $this->plugin->getServer()->getConsoleSender()){
+            throw new BankException('Administrator identity must be a live player or the actual server console sender.');
+        }
+
+        return ['uuid' => 'console', 'name' => $actor->getName()];
     }
+
 
     /**
      * @return list<BankAccount>

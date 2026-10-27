@@ -20,4 +20,7 @@ interface Form extends \JsonSerializable{
 namespace pocketmine\player;
 
 class Player{
+    public function hasPermission(string $permission) : bool{
+        return false;
+    }
 }

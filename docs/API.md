@@ -17,15 +17,16 @@ BankSystem exposes its service through the main plugin class. API calls use inte
 - findAccountByUuid(string $uuid): ?BankAccount — reads an existing account by stable UUID without creating it
 - findAccountByName(string $playerName): ?BankAccount — resolves an existing account or creates a verifiable offline account from PocketMine's saved XUID; throws if ambiguous or conflicting
 - validateTransactionAmount(int $amountMinor): void — checks positivity and the configured per-transaction cap before resolving an offline recipient
-- transferToName(string $fromUuid, string $fromName, string $toName, int $amountMinor): void — sends to a known account even when its owner is offline
-- deposit(string $uuid, string $playerName, int $amountMinor): void
-- withdraw(string $uuid, string $playerName, int $amountMinor): void
-- transfer(string $fromUuid, string $fromName, string $toUuid, string $toName, int $amountMinor): void
+- registerOnlinePlayer(Player $player): BankAccount — registers an authenticated live player and reconciles a verified offline identity
+- transferToNameAs(Player $actor, string $toName, int $amountMinor): void — sends to a known online/offline account using the actor's real identity
+- depositAs(Player $actor, int $amountMinor): void
+- withdrawAs(Player $actor, int $amountMinor): void
+- transferAs(Player $actor, string $toUuid, int $amountMinor): void
 - giveAs(CommandSender $actor, string $targetUuid, string $targetName, string $bucket, int $amountMinor): void
 - takeAs(CommandSender $actor, string $targetUuid, string $targetName, string $bucket, int $amountMinor): void
 - setBalanceAs(CommandSender $actor, string $targetUuid, string $targetName, string $bucket, int $amountMinor): void
 
-The legacy `give()`, `take()`, and `setBalance()` signatures that accept caller-supplied actor UUID/name are retained for source discovery but now throw `BankException` without changing balances. Those strings cannot prove who authorized an administrator operation. Use the `*As()` methods and pass the real PocketMine `CommandSender`; the service re-checks `banksystem.admin` itself and records the actor identity from that sender. Never forward a player name or UUID received from an untrusted request as an actor identity.
+The legacy `give()`, `take()`, and `setBalance()` signatures that accept caller-supplied actor UUID/name are retained but throw `BankException` without changing balances. The same fail-closed rule applies to the legacy `deposit()`, `withdraw()`, `transfer()`, `transferToName()`, and `registerOnlineAccount()` methods because caller-supplied UUID/name/XUID strings cannot prove a live player's identity or authorization. For player transactions, use `depositAs($player, $amountMinor)`, `withdrawAs($player, $amountMinor)`, `transferAs($player, $toUuid, $amountMinor)`, and `transferToNameAs($player, $toName, $amountMinor)` with the actual connected PocketMine `Player`. Each method checks `banksystem.use`, verifies the same player object is still online, and derives the source UUID/name from that object. For join registration, use `registerOnlinePlayer($player)`. For administration, pass the real `CommandSender` to `giveAs()`, `takeAs()`, or `setBalanceAs()`; the service re-checks `banksystem.admin`, verifies player/console sender provenance, and derives audit identity from the sender. Never forward untrusted identity strings as proof of actor identity.
 - getTopAccounts(int $limit = 10): list of BankAccount
 - getHistory(string $uuid, int $limit = 10, int $offset = 0): list of transaction records
 
@@ -37,9 +38,8 @@ An offline recipient can be resolved from an existing BankSystem account. If no 
 
 ```php
 try{
-    $bank->transferToName(
-        $player->getUniqueId()->toString(),
-        $player->getName(),
+    $bank->transferToNameAs(
+        $player,
         'KnownOfflinePlayer',
         1250 // 12.50 in minor units
     );
@@ -58,7 +58,7 @@ A successful database mutation dispatches BankTransactionEvent after the SQLite 
 ## Integration guidance
 
 - Use the player's UUID as the account key; player names may change.
-- Offline lookup starts with an existing saved bank account. If it does not exist, the service consults PocketMine's own saved player data and may create the account only from a valid numeric `LastKnownXUID`; it never fabricates identity from a name. On the next live join, the temporary account key and historical transaction UUID references are migrated atomically to the live player UUID. If PocketMine has no saved XUID, or an existing row cannot be safely matched to it, the service rejects name-based offline operations. A player can always be registered through a real join.
+- Offline lookup starts with an existing saved bank account. If it does not exist, the service consults PocketMine's own saved player data and may create the account only from a valid numeric `LastKnownXUID`; it never fabricates identity from a name. On the next live join, the temporary account key and historical transaction UUID references are migrated atomically to the live player UUID. If PocketMine has no saved XUID, or an existing row cannot be safely matched to it, the service rejects name-based offline operations. A player is registered through the live `Player` object on a real join.
 - For an online name, BankSystem resolves the currently connected player's UUID first. For an offline name, ambiguous case-insensitive matches are rejected; use an explicit UUID through the API in that case.
 - The in-game UI uses PocketMine-MP's native form interface. FormAPI is not a required dependency; the panel works without it and remains usable when FormAPI is installed because BankSystem doesn't replace FormAPI classes or transport.
 - Keep API calls on PocketMine's main thread unless the plugin has independently designed a safe asynchronous boundary.

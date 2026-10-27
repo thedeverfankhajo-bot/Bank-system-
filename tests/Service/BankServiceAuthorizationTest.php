@@ -8,6 +8,7 @@ use BankSystem\BankException;
 use BankSystem\Service\BankService;
 use PHPUnit\Framework\TestCase;
 use pocketmine\command\CommandSender;
+use pocketmine\player\Player;
 use ReflectionClass;
 
 final class BankServiceAuthorizationTest extends TestCase{
@@ -31,6 +32,46 @@ final class BankServiceAuthorizationTest extends TestCase{
                 self::fail('Legacy privileged API operation unexpectedly succeeded: ' . $operation);
             }catch(BankException $exception){
                 self::assertStringContainsString('legacy privileged API is disabled', $exception->getMessage());
+            }
+        }
+    }
+
+    public function testLegacyPlayerTransactionApiRejectsCallerSuppliedIdentity() : void{
+        $service = $this->serviceWithoutConstructor();
+        $calls = [
+            'registerOnlineAccount' => static fn() => $service->registerOnlineAccount('victim-uuid', 'Victim', '123456789'),
+            'deposit' => static fn() => $service->deposit('victim-uuid', 'Victim', 100),
+            'withdraw' => static fn() => $service->withdraw('victim-uuid', 'Victim', 100),
+            'transfer' => static fn() => $service->transfer('victim-uuid', 'Victim', 'attacker-uuid', 'Attacker', 100),
+            'transferToName' => static fn() => $service->transferToName('victim-uuid', 'Victim', 'Attacker', 100)
+        ];
+
+        foreach($calls as $operation => $call){
+            try{
+                $call();
+                self::fail('Legacy player API operation unexpectedly succeeded: ' . $operation);
+            }catch(BankException $exception){
+                self::assertStringContainsString('legacy', strtolower($exception->getMessage()), $operation);
+            }
+        }
+    }
+
+    public function testActorBoundPlayerTransactionsRequireUsePermissionBeforeStorageAccess() : void{
+        $service = $this->serviceWithoutConstructor();
+        $player = new Player();
+        $calls = [
+            'depositAs' => static fn() => $service->depositAs($player, 100),
+            'withdrawAs' => static fn() => $service->withdrawAs($player, 100),
+            'transferAs' => static fn() => $service->transferAs($player, 'target-uuid', 100),
+            'transferToNameAs' => static fn() => $service->transferToNameAs($player, 'Target', 100)
+        ];
+
+        foreach($calls as $operation => $call){
+            try{
+                $call();
+                self::fail('Unauthorized player transaction unexpectedly succeeded: ' . $operation);
+            }catch(BankException $exception){
+                self::assertStringContainsString('banksystem.use', strtolower($exception->getMessage()), $operation);
             }
         }
     }
