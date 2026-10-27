@@ -1,5 +1,7 @@
 # BankSystem
 
+![BankSystem project illustration — not an in-game screenshot](assets/banksystem-banner.svg)
+
 A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP API 5.
 
 [![CI](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/ci.yml) [![PHP Security](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/php-security.yml/badge.svg?branch=main)](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/php-security.yml) [![Latest release](https://img.shields.io/github/v/release/thedeverfankhajo-bot/Bank-system-?display_name=tag)](https://github.com/thedeverfankhajo-bot/Bank-system-/releases)
