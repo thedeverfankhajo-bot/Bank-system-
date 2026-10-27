@@ -21,6 +21,7 @@ use Throwable;
 
 final class BankCommand{
     private TransactionCooldown $transactionCooldown;
+    private bool $invalidCooldownWarningLogged = false;
 
     public function __construct(
         private readonly Main $plugin,
@@ -906,7 +907,7 @@ final class BankCommand{
 
     private function runTransaction(CommandSender $sender, callable $operation) : bool{
         $playerUuid = $sender instanceof Player ? $sender->getUniqueId()->toString() : null;
-        $cooldown = max(0, (int) $this->plugin->getConfig()->getNested('security.transaction-cooldown-seconds', 1));
+        $cooldown = $this->configuredCooldownSeconds();
         $now = microtime(true);
         if($playerUuid !== null && $cooldown > 0){
             if($this->transactionCooldown->isActive($playerUuid, $now, $cooldown)){
@@ -948,6 +949,29 @@ final class BankCommand{
         $this->plugin->getLogger()->warning(
             'A bank transaction committed, but its post-commit ' . $context . ' failed: ' . $exception->getMessage()
         );
+    }
+
+    private function configuredCooldownSeconds() : int{
+        $value = $this->plugin->getConfig()->getNested('security.transaction-cooldown-seconds', 1);
+        if(is_int($value) && $value >= 0){
+            return $value;
+        }
+
+        if(is_string($value) && preg_match('/^(0|[1-9][0-9]*)$/D', $value) === 1){
+            $maximum = (string) PHP_INT_MAX;
+            if(strlen($value) < strlen($maximum) ||
+                (strlen($value) === strlen($maximum) && strcmp($value, $maximum) <= 0)){
+                return (int) $value;
+            }
+        }
+
+        if(!$this->invalidCooldownWarningLogged){
+            $this->plugin->getLogger()->warning(
+                'Invalid security.transaction-cooldown-seconds; using the secure default of 1 second.'
+            );
+            $this->invalidCooldownWarningLogged = true;
+        }
+        return 1;
     }
 
     private function formatMoney(int $amountMinor) : string{
