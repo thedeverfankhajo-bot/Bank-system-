@@ -626,6 +626,38 @@ final class BankRepositoryTest extends TestCase{
         self::assertSame(4500, $account->bankBalance);
     }
 
+    public function testPlayerWithoutXuidCannotCreateDuplicateOfOfflineXuidAccount() : void{
+        $offline = $this->repository->ensureOfflineAccount('OfflineBlake', '7654321098765', 100, 200);
+        $this->repository->move(
+            'player-a', 'Alex',
+            'player-a', 'Alex',
+            $offline->uuid, $offline->playerName,
+            'pay', 1250, 'wallet', 'wallet', PHP_INT_MAX
+        );
+
+        try{
+            $this->repository->ensureAccountWithXuid(
+                'offline-live-uuid',
+                'OfflineBlake',
+                '',
+                900000,
+                900000
+            );
+            self::fail('A player without XUID unexpectedly created a duplicate account for an XUID-linked offline identity.');
+        }catch(BankException $exception){
+            self::assertStringContainsString('saved XUID-linked account already uses this player name', $exception->getMessage());
+        }
+
+        self::assertNull($this->repository->getAccount('offline-live-uuid'));
+        $persisted = $this->repository->getAccount($offline->uuid);
+        self::assertNotNull($persisted);
+        self::assertSame(1350, $persisted->walletBalance);
+        self::assertSame(200, $persisted->bankBalance);
+        $history = $this->repository->getHistory($offline->uuid, 10, 0);
+        self::assertCount(1, $history);
+        self::assertSame($offline->uuid, $history[0]['to_uuid']);
+    }
+
     public function testVersionOneDatabaseMigratesToXuidSchemaWithoutLosingData() : void{
         $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-v1-migration-' . bin2hex(random_bytes(8)) . '.sqlite3';
         $legacy = new \SQLite3($path);

@@ -430,6 +430,20 @@ final class BankRepository{
                     throw new BankException('This UUID is already linked to a saved XUID, but the current player has no XUID. The account was not changed.');
                 }
 
+                // Do not create a second UUID-keyed account while a saved XUID-backed
+                // account with the same name exists. Without a live XUID, the service
+                // cannot prove the identities are different or safely merge their funds.
+                $linkedName = $this->fetchOne(
+                    'SELECT uuid FROM bank_accounts
+                     WHERE player_name COLLATE NOCASE = :player_name COLLATE NOCASE
+                       AND xuid IS NOT NULL AND xuid <> :empty_xuid AND uuid <> :uuid
+                     LIMIT 1',
+                    [':player_name' => $playerName, ':empty_xuid' => '', ':uuid' => $uuid]
+                );
+                if($linkedName !== null){
+                    throw new BankException('A saved XUID-linked account already uses this player name, but the current player has no XUID. The account was not changed.');
+                }
+
                 $this->ensureAccount($uuid, $playerName, $initialWallet, $initialBank);
                 $this->secureStoragePermissions();
                 $this->database->exec('COMMIT');
