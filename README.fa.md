@@ -2,9 +2,9 @@
 
 پلاگین مستقل بانک و کیف پول برای سرورهای Minecraft Bedrock که از PocketMine-MP API 5 استفاده می‌کنند.
 
-> **دانلود آماده نصب:** [دریافت BankSystem.phar از آخرین انتشار](https://github.com/thedeverfankhajo-bot/Bank-system-/releases/latest/download/BankSystem.phar) · [همه انتشارها و فایل checksum](https://github.com/thedeverfankhajo-bot/Bank-system-/releases). لینک دانلود مستقیم پس از انتشار اولین نسخه فعال می‌شود.
+> **دانلود آماده نصب:** [دریافت BankSystem.phar از آخرین انتشار](https://github.com/thedeverfankhajo-bot/Bank-system-/releases/latest/download/BankSystem.phar) · [همه انتشارها و فایل checksum](https://github.com/thedeverfankhajo-bot/Bank-system-/releases). لینک دانلود مستقیم زمانی کار می‌کند که آخرین انتشار شامل این فایل‌ها باشد.
 >
-> اگر هنوز نسخه‌ای در بخش Releases منتشر نشده، [فرایند انتشار PHAR](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/release.yml) را از شاخه `main` اجرا کن و برچسب نسخه مطابق `plugin.yml` (فعلاً `v1.0.2`) را وارد کن. این فرایند ابتدا آزمون‌ها را اجرا می‌کند و سپس فایل PHAR و SHA-256 را منتشر می‌کند.
+> اگر برای نسخهٔ فعلی `plugin.yml` هنوز Release منتشر نشده، [فرایند انتشار PHAR](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/release.yml) را از شاخه `main` اجرا کن و برچسب نسخه را با پیشوند `v` وارد کن (فعلاً `v1.0.2`). این فرایند کد همان تگ را بررسی می‌کند، آزمون‌ها را اجرا می‌کند و سپس فایل PHAR و SHA-256 را منتشر می‌کند. انتشار موجود بازنویسی نمی‌شود.
 
 برای نصب، فایل PHAR را در پوشه `plugins/` سرور قرار بده و سرور را مجدداً اجرا کن.
 
