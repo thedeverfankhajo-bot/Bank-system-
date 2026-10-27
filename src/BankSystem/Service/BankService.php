@@ -220,6 +220,10 @@ final class BankService{
      *
      * @deprecated Use giveAs() and pass the actual CommandSender.
      */
+    /**
+     * @deprecated Caller-supplied actor identifiers are not trustworthy for privileged operations.
+     * Use giveAs() and pass the actual CommandSender.
+     */
     public function give(
         string $targetUuid,
         string $targetName,
@@ -232,10 +236,8 @@ final class BankService{
     }
 
     /**
-     * @deprecated Use takeAs() and pass the actual CommandSender.
-     */
-    /**
-     * @deprecated Use takeAs() and pass the actual CommandSender.
+     * @deprecated Caller-supplied actor identifiers are not trustworthy for privileged operations.
+     * Use takeAs() and pass the actual CommandSender.
      */
     public function take(
         string $targetUuid,
@@ -249,7 +251,8 @@ final class BankService{
     }
 
     /**
-     * @deprecated Use setBalanceAs() and pass the actual CommandSender.
+     * @deprecated Caller-supplied actor identifiers are not trustworthy for privileged operations.
+     * Use setBalanceAs() and pass the actual CommandSender.
      */
     public function setBalance(
         string $targetUuid,
@@ -260,24 +263,6 @@ final class BankService{
         string $actorName
     ) : void{
         throw new BankException('The legacy privileged API is disabled because caller-supplied actor identity is not verifiable. Use setBalanceAs() with a CommandSender.');
-    }
-
-    public function setBalance(
-        string $targetUuid,
-        string $targetName,
-        string $bucket,
-        int $amountMinor,
-        string $actorUuid,
-        string $actorName
-    ) : void{
-        if($amountMinor < 0){
-            throw new BankException('A balance cannot be negative.');
-        }
-        $this->getAccount($targetUuid, $targetName);
-        $this->publish($this->repository->adjustBalance(
-            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'set', $amountMinor,
-            $this->configuredAmount('limits.max-transaction', '1000000.00')
-        ));
     }
 
     public function giveAs(
