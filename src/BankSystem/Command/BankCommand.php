@@ -587,10 +587,11 @@ final class BankCommand{
             return;
         }
 
-        $this->runTransaction($sender, function() use ($player, $amount) : void{
+        if($this->runTransaction($sender, function() use ($player, $amount) : void{
             $this->service->deposit($player->getUniqueId()->toString(), $player->getName(), $amount);
-            $this->message($player, 'Deposited ' . $this->formatMoney($amount) . ' into your bank.');
-        });
+        })){
+            $this->notifyAfterCommit($player, 'Deposited ' . $this->formatMoney($amount) . ' into your bank.', 'deposit notification');
+        }
     }
 
     /**
@@ -610,10 +611,11 @@ final class BankCommand{
             return;
         }
 
-        $this->runTransaction($sender, function() use ($player, $amount) : void{
+        if($this->runTransaction($sender, function() use ($player, $amount) : void{
             $this->service->withdraw($player->getUniqueId()->toString(), $player->getName(), $amount);
-            $this->message($player, 'Withdrew ' . $this->formatMoney($amount) . ' into your wallet.');
-        });
+        })){
+            $this->notifyAfterCommit($player, 'Withdrew ' . $this->formatMoney($amount) . ' into your wallet.', 'withdraw notification');
+        }
     }
 
     /**
@@ -651,7 +653,7 @@ final class BankCommand{
             return;
         }
 
-        $this->runTransaction($sender, function() use ($player, $target, $amount) : void{
+        if(!$this->runTransaction($sender, function() use ($player, $target, $amount) : void{
             $this->service->transfer(
                 $player->getUniqueId()->toString(),
                 $player->getName(),
@@ -659,12 +661,19 @@ final class BankCommand{
                 $target->playerName,
                 $amount
             );
-            $this->message($player, 'Sent ' . $this->formatMoney($amount) . ' to ' . $target->playerName . '.');
+        })){
+            return;
+        }
+
+        $this->notifyAfterCommit($player, 'Sent ' . $this->formatMoney($amount) . ' to ' . $target->playerName . '.', 'transfer sender notification');
+        try{
             $targetPlayer = $this->onlinePlayerForAccount($target);
             if($targetPlayer !== null && $targetPlayer !== $player){
-                $this->message($targetPlayer, 'Received ' . $this->formatMoney($amount) . ' from ' . $player->getName() . '.');
+                $this->notifyAfterCommit($targetPlayer, 'Received ' . $this->formatMoney($amount) . ' from ' . $player->getName() . '.', 'transfer recipient notification');
             }
-        });
+        }catch(Throwable $exception){
+            $this->logPostCommitError('transfer recipient lookup', $exception);
+        }
     }
 
     private function handleTop(CommandSender $sender) : void{
@@ -773,7 +782,7 @@ final class BankCommand{
         $actorUuid = $sender instanceof Player ? $sender->getUniqueId()->toString() : 'console';
         $actorName = $sender->getName();
 
-        $this->runTransaction($sender, function() use ($sender, $target, $mode, $bucket, $amount, $actorUuid, $actorName) : void{
+        if(!$this->runTransaction($sender, function() use ($target, $mode, $bucket, $amount, $actorUuid, $actorName) : void{
             if($mode === 'give'){
                 $this->service->give($target->uuid, $target->playerName, $bucket, $amount, $actorUuid, $actorName);
             }elseif($mode === 'take'){
@@ -781,19 +790,26 @@ final class BankCommand{
             }else{
                 $this->service->setBalance($target->uuid, $target->playerName, $bucket, $amount, $actorUuid, $actorName);
             }
+        })){
+            return;
+        }
 
-            if($mode === 'set'){
-                $this->message($sender, 'Admin set: ' . $target->playerName . ' ' . $bucket . ' balance set to ' . $this->formatMoney($amount) . '.');
-            }else{
-                $verb = $mode === 'give' ? 'Added ' : 'Removed ';
-                $this->message($sender, 'Admin ' . $mode . ': ' . $verb . $this->formatMoney($amount) . ' ' . ($mode === 'give' ? 'to ' : 'from ') . $target->playerName . ' ' . $bucket . '.');
-            }
+        if($mode === 'set'){
+            $adminMessage = 'Admin set: ' . $target->playerName . ' ' . $bucket . ' balance set to ' . $this->formatMoney($amount) . '.';
+        }else{
+            $verb = $mode === 'give' ? 'Added ' : 'Removed ';
+            $adminMessage = 'Admin ' . $mode . ': ' . $verb . $this->formatMoney($amount) . ' ' . ($mode === 'give' ? 'to ' : 'from ') . $target->playerName . ' ' . $bucket . '.';
+        }
+        $this->notifyAfterCommit($sender, $adminMessage, 'administrator notification');
 
+        try{
             $targetPlayer = $this->onlinePlayerForAccount($target);
             if($targetPlayer !== null && !($sender instanceof Player && $targetPlayer === $sender)){
-                $this->message($targetPlayer, 'An administrator updated your ' . $bucket . ' balance.');
+                $this->notifyAfterCommit($targetPlayer, 'An administrator updated your ' . $bucket . ' balance.', 'administrator target notification');
             }
-        });
+        }catch(Throwable $exception){
+            $this->logPostCommitError('administrator target lookup', $exception);
+        }
     }
 
     private function showBalance(CommandSender $sender, BankAccount $account) : void{
@@ -888,14 +904,14 @@ final class BankCommand{
         }
     }
 
-    private function runTransaction(CommandSender $sender, callable $operation) : void{
+    private function runTransaction(CommandSender $sender, callable $operation) : bool{
         $playerUuid = $sender instanceof Player ? $sender->getUniqueId()->toString() : null;
         $cooldown = max(0, (int) $this->plugin->getConfig()->getNested('security.transaction-cooldown-seconds', 1));
         $now = microtime(true);
         if($playerUuid !== null && $cooldown > 0){
             if($this->transactionCooldown->isActive($playerUuid, $now, $cooldown)){
                 $this->message($sender, 'Please wait before making another transaction.');
-                return;
+                return false;
             }
         }elseif($playerUuid !== null){
             $this->transactionCooldown->forget($playerUuid);
@@ -906,12 +922,32 @@ final class BankCommand{
             if($playerUuid !== null && $cooldown > 0){
                 $this->transactionCooldown->recordSuccess($playerUuid, microtime(true));
             }
+            return true;
         }catch(BankException $exception){
             $this->message($sender, $exception->getMessage());
         }catch(Throwable $exception){
             $this->plugin->getLogger()->critical('Bank transaction failed: ' . $exception->getMessage());
             $this->message($sender, 'The transaction failed due to an internal error. Check the server log.');
         }
+        return false;
+    }
+
+    /**
+     * Sends a user-facing message after a financial mutation has committed.
+     * Notification failures must never make a committed transaction appear failed.
+     */
+    private function notifyAfterCommit(CommandSender $recipient, string $message, string $context) : void{
+        try{
+            $this->message($recipient, $message);
+        }catch(Throwable $exception){
+            $this->logPostCommitError($context, $exception);
+        }
+    }
+
+    private function logPostCommitError(string $context, Throwable $exception) : void{
+        $this->plugin->getLogger()->warning(
+            'A bank transaction committed, but its post-commit ' . $context . ' failed: ' . $exception->getMessage()
+        );
     }
 
     private function formatMoney(int $amountMinor) : string{
