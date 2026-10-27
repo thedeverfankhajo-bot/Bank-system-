@@ -800,7 +800,7 @@ final class BankCommand{
         $this->message($sender, 'Balance for ' . BedrockText::sanitize($account->playerName) . ':');
         $this->message($sender, 'Wallet: ' . $this->formatMoney($account->walletBalance));
         $this->message($sender, 'Bank: ' . $this->formatMoney($account->bankBalance));
-        $this->message($sender, 'Total: ' . $this->formatMoney($account->totalBalance()));
+        $this->message($sender, 'Total: ' . Money::formatSum($account->walletBalance, $account->bankBalance, $this->plugin->getCurrencySymbol()));
     }
 
     private function showHelp(CommandSender $sender) : void{
