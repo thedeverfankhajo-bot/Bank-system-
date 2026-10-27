@@ -419,7 +419,30 @@ final class BankRepository{
             throw new BankException('Initial bank balances cannot be negative.');
         }
         if($xuid === ''){
-            $this->ensureAccount($uuid, $playerName, $initialWallet, $initialBank);
+            // A live UUID is not enough to discard a previously verified XUID link.
+            // Serialize the lookup and update so an empty-XUID session cannot rename
+            // or reuse an account that was linked to a saved authenticated identity.
+            $this->database->exec('BEGIN IMMEDIATE');
+            $transactionOpen = true;
+            try{
+                $byUuid = $this->fetchOne('SELECT * FROM bank_accounts WHERE uuid = :uuid', [':uuid' => $uuid]);
+                if($byUuid !== null && $byUuid['xuid'] !== null && (string) $byUuid['xuid'] !== ''){
+                    throw new BankException('This UUID is already linked to a saved XUID, but the current player has no XUID. The account was not changed.');
+                }
+
+                $this->ensureAccount($uuid, $playerName, $initialWallet, $initialBank);
+                $this->secureStoragePermissions();
+                $this->database->exec('COMMIT');
+                $transactionOpen = false;
+            }catch(Throwable $exception){
+                if($transactionOpen){
+                    try{
+                        $this->database->exec('ROLLBACK');
+                    }catch(Throwable){
+                    }
+                }
+                throw $exception;
+            }
             return;
         }
         if(preg_match('/^[0-9]+$/D', $xuid) !== 1){

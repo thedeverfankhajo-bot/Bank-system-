@@ -37,7 +37,7 @@ The bucket value must be wallet or bank. Call `validateTransactionAmount($amount
 
 ## Offline account examples
 
-An offline recipient can be resolved from an existing BankSystem account. If no account exists yet, BankSystem can create one only when PocketMine has saved a valid numeric `LastKnownXUID` for that player. The account initially uses an internal `offline-xuid:<xuid>` key; when that player next joins, the record and transaction-history UUID references are atomically promoted to the live UUID. A name alone is never used to invent a UUID or XUID. Missing XUID data, ambiguous names, mismatched XUIDs, or conflicts with a different existing account are rejected with `BankException` rather than guessing.
+An offline recipient can be resolved from an existing BankSystem account. If no account exists yet, BankSystem can create one only when PocketMine has saved a valid numeric `LastKnownXUID` for that player. The account initially uses an internal `offline-xuid:<xuid>` key; when that player next joins, the record and transaction-history UUID references are atomically promoted to the live UUID. A name alone is never used to invent a UUID or XUID. Missing XUID data, ambiguous names, mismatched XUIDs, a live session with an empty XUID attempting to reuse an XUID-linked account, or conflicts with a different existing account are rejected with `BankException` rather than guessing.
 
 ```php
 try{

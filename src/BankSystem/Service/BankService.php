@@ -50,8 +50,10 @@ final class BankService{
         $this->assertLivePlayer($player);
         $uuid = $player->getUniqueId()->toString();
         $account = $this->repository->getAccount($uuid);
+        $xuid = $player->getXuid();
         if($account === null || $account->playerName !== $player->getName() ||
-            ($player->getXuid() !== '' && $account->xuid !== $player->getXuid())){
+            ($xuid !== '' && $account->xuid !== $xuid) ||
+            ($xuid === '' && $account->xuid !== null)){
             return $this->registerOnlinePlayer($player);
         }
         return $account;

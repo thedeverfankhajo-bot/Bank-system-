@@ -596,6 +596,36 @@ final class BankRepositoryTest extends TestCase{
         self::assertSame($offline->uuid, $this->repository->findAccountByXuid('5555555555555')?->uuid);
     }
 
+    public function testPlayerWithoutXuidCannotReuseOrRenameAnXuidLinkedAccount() : void{
+        $this->repository->ensureAccountWithXuid(
+            'linked-live-uuid',
+            'TrustedName',
+            '1234567890123',
+            1250,
+            4500
+        );
+
+        try{
+            $this->repository->ensureAccountWithXuid(
+                'linked-live-uuid',
+                'UnverifiedName',
+                '',
+                999999,
+                999999
+            );
+            self::fail('A session without XUID unexpectedly reused an XUID-linked account.');
+        }catch(BankException $exception){
+            self::assertStringContainsString('already linked to a saved XUID', $exception->getMessage());
+        }
+
+        $account = $this->repository->getAccount('linked-live-uuid');
+        self::assertNotNull($account);
+        self::assertSame('TrustedName', $account->playerName);
+        self::assertSame('1234567890123', $account->xuid);
+        self::assertSame(1250, $account->walletBalance);
+        self::assertSame(4500, $account->bankBalance);
+    }
+
     public function testVersionOneDatabaseMigratesToXuidSchemaWithoutLosingData() : void{
         $path = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'banksystem-v1-migration-' . bin2hex(random_bytes(8)) . '.sqlite3';
         $legacy = new \SQLite3($path);
