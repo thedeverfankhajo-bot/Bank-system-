@@ -780,16 +780,13 @@ final class BankCommand{
             return;
         }
 
-        $actorUuid = $sender instanceof Player ? $sender->getUniqueId()->toString() : 'console';
-        $actorName = $sender->getName();
-
-        if(!$this->runTransaction($sender, function() use ($target, $mode, $bucket, $amount, $actorUuid, $actorName) : void{
+        if(!$this->runTransaction($sender, function() use ($sender, $target, $mode, $bucket, $amount) : void{
             if($mode === 'give'){
-                $this->service->give($target->uuid, $target->playerName, $bucket, $amount, $actorUuid, $actorName);
+                $this->service->giveAs($sender, $target->uuid, $target->playerName, $bucket, $amount);
             }elseif($mode === 'take'){
-                $this->service->take($target->uuid, $target->playerName, $bucket, $amount, $actorUuid, $actorName);
+                $this->service->takeAs($sender, $target->uuid, $target->playerName, $bucket, $amount);
             }else{
-                $this->service->setBalance($target->uuid, $target->playerName, $bucket, $amount, $actorUuid, $actorName);
+                $this->service->setBalanceAs($sender, $target->uuid, $target->playerName, $bucket, $amount);
             }
         })){
             return;
