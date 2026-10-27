@@ -15,7 +15,7 @@ A standalone banking plugin for Minecraft Bedrock servers running PocketMine-MP 
 3. Copy `BankSystem.phar` into the PocketMine-MP server's `plugins/` directory.
 4. Restart the server, then run `/bank` in-game.
 
-If no release exists yet for the version in `plugin.yml`, open the [Publish PHAR release workflow](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/release.yml), choose **Run workflow** on `main`, and enter the version with a `v` prefix (currently `v1.0.2`). The workflow validates the exact release source, runs the checks, builds the PHAR, calculates its checksum, and publishes both assets. It also handles an existing version tag by building from that exact tag, and refuses to overwrite an existing release.
+To publish a release, make sure the version in `plugin.yml` is final, then create and push a matching version tag (currently `v1.0.2`): `git tag v1.0.2` followed by `git push origin v1.0.2`. The [release workflow](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/release.yml) runs only for `v*` tags, validates the tag and source, runs tests and dependency audits, builds the PHAR, creates a SHA-256 checksum, and publishes both assets. If that tag already exists, do not force-push it; bump the version in `plugin.yml` and use a new tag.
 
 ## Documentation
 
