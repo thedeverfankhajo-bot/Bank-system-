@@ -295,7 +295,11 @@ final class BankService{
 
     private function configuredAmount(string $key, string $fallback) : int{
         $value = $this->plugin->getConfig()->getNested($key, $fallback);
-        $parsed = Money::parse(is_scalar($value) ? (string) $value : '', true);
+        // Money config must remain exact: accept decimal strings or integers, but never
+        // coerce YAML floats (already subject to binary rounding) or booleans to money.
+        $parsed = is_string($value) || is_int($value)
+            ? Money::parse((string) $value, true)
+            : null;
         if($parsed === null){
             $this->plugin->getLogger()->warning('Invalid money value in config path ' . $key . '; using ' . $fallback . '.');
             return Money::parse($fallback, true) ?? 0;
@@ -309,14 +313,15 @@ final class BankService{
      * @param array<string, mixed> $record
      */
     private function publish(array $record) : void{
-        if(!BankTransactionEvent::hasHandlers()){
-            return;
-        }
-
         try{
+            if(!BankTransactionEvent::hasHandlers()){
+                return;
+            }
+
             (new BankTransactionEvent($record))->call();
         }catch(Throwable $exception){
-            // An external listener cannot turn an already committed payment into a failure.
+            // Any event-dispatch failure happens after commit and cannot turn the
+            // completed money movement into a reported transaction failure.
             $this->plugin->getLogger()->error(
                 'A BankTransactionEvent listener failed after transaction ' . (string) ($record['transaction_id'] ?? 'unknown') .
                 ' had committed: ' . $exception->getMessage()
