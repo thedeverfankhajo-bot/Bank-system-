@@ -4,7 +4,7 @@
 
 > **دانلود آماده نصب:** [دریافت BankSystem.phar از آخرین انتشار](https://github.com/thedeverfankhajo-bot/Bank-system-/releases/latest/download/BankSystem.phar) · [همه انتشارها و فایل checksum](https://github.com/thedeverfankhajo-bot/Bank-system-/releases). لینک دانلود مستقیم زمانی کار می‌کند که آخرین انتشار شامل این فایل‌ها باشد.
 >
-> اگر برای نسخهٔ فعلی `plugin.yml` هنوز Release منتشر نشده، [فرایند انتشار PHAR](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/release.yml) را از شاخه `main` اجرا کن و برچسب نسخه را با پیشوند `v` وارد کن (فعلاً `v1.0.2`). این فرایند کد همان تگ را بررسی می‌کند، آزمون‌ها را اجرا می‌کند و سپس فایل PHAR و SHA-256 را منتشر می‌کند. انتشار موجود بازنویسی نمی‌شود.
+> برای انتشار نسخه، مطمئن شو شمارهٔ نسخه در `plugin.yml` نهایی است و سپس تگ منطبق بساز و push کن (نسخهٔ فعلی `v1.0.2` است): `git tag v1.0.2` و بعد `git push origin v1.0.2`. [فرایند انتشار](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/release.yml) فقط با تگ‌های `v*` اجرا می‌شود، تست‌ها و بررسی وابستگی‌ها را انجام می‌دهد، PHAR و SHA-256 می‌سازد و سپس هر دو فایل را منتشر می‌کند. اگر تگ از قبل وجود دارد، آن را force-push نکن؛ نسخهٔ `plugin.yml` را افزایش بده و تگ جدید بساز.
 
 برای نصب، فایل PHAR را در پوشه `plugins/` سرور قرار بده و سرور را مجدداً اجرا کن.
 
