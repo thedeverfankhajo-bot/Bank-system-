@@ -10,6 +10,7 @@ use BankSystem\Database\BankRepository;
 use BankSystem\Event\BankTransactionEvent;
 use BankSystem\Main;
 use BankSystem\Support\Money;
+use pocketmine\command\CommandSender;
 use pocketmine\player\Player;
 use Throwable;
 
@@ -213,6 +214,12 @@ final class BankService{
         $this->publish($record);
     }
 
+    /**
+     * Legacy signature retained so integrations fail safely rather than silently spoofing
+     * an actor by supplying arbitrary UUID/name strings.
+     *
+     * @deprecated Use giveAs() and pass the actual CommandSender.
+     */
     public function give(
         string $targetUuid,
         string $targetName,
@@ -221,14 +228,15 @@ final class BankService{
         string $actorUuid,
         string $actorName
     ) : void{
-        $this->guardTransactionAmount($amountMinor);
-        $this->getAccount($targetUuid, $targetName);
-        $this->publish($this->repository->adjustBalance(
-            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'give', $amountMinor,
-            $this->configuredAmount('limits.max-transaction', '1000000.00')
-        ));
+        throw new BankException('The legacy privileged API is disabled because caller-supplied actor identity is not verifiable. Use giveAs() with a CommandSender.');
     }
 
+    /**
+     * @deprecated Use takeAs() and pass the actual CommandSender.
+     */
+    /**
+     * @deprecated Use takeAs() and pass the actual CommandSender.
+     */
     public function take(
         string $targetUuid,
         string $targetName,
@@ -237,12 +245,21 @@ final class BankService{
         string $actorUuid,
         string $actorName
     ) : void{
-        $this->guardTransactionAmount($amountMinor);
-        $this->getAccount($targetUuid, $targetName);
-        $this->publish($this->repository->adjustBalance(
-            $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'take', $amountMinor,
-            $this->configuredAmount('limits.max-transaction', '1000000.00')
-        ));
+        throw new BankException('The legacy privileged API is disabled because caller-supplied actor identity is not verifiable. Use takeAs() with a CommandSender.');
+    }
+
+    /**
+     * @deprecated Use setBalanceAs() and pass the actual CommandSender.
+     */
+    public function setBalance(
+        string $targetUuid,
+        string $targetName,
+        string $bucket,
+        int $amountMinor,
+        string $actorUuid,
+        string $actorName
+    ) : void{
+        throw new BankException('The legacy privileged API is disabled because caller-supplied actor identity is not verifiable. Use setBalanceAs() with a CommandSender.');
     }
 
     public function setBalance(
@@ -261,6 +278,70 @@ final class BankService{
             $actorUuid, $actorName, $targetUuid, $targetName, $bucket, 'set', $amountMinor,
             $this->configuredAmount('limits.max-transaction', '1000000.00')
         ));
+    }
+
+    public function giveAs(
+        CommandSender $actor,
+        string $targetUuid,
+        string $targetName,
+        string $bucket,
+        int $amountMinor
+    ) : void{
+        $identity = $this->administratorIdentity($actor);
+        $this->guardTransactionAmount($amountMinor);
+        $this->getAccount($targetUuid, $targetName);
+        $this->publish($this->repository->adjustBalance(
+            $identity['uuid'], $identity['name'], $targetUuid, $targetName, $bucket, 'give', $amountMinor,
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
+        ));
+    }
+
+    public function takeAs(
+        CommandSender $actor,
+        string $targetUuid,
+        string $targetName,
+        string $bucket,
+        int $amountMinor
+    ) : void{
+        $identity = $this->administratorIdentity($actor);
+        $this->guardTransactionAmount($amountMinor);
+        $this->getAccount($targetUuid, $targetName);
+        $this->publish($this->repository->adjustBalance(
+            $identity['uuid'], $identity['name'], $targetUuid, $targetName, $bucket, 'take', $amountMinor,
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
+        ));
+    }
+
+    public function setBalanceAs(
+        CommandSender $actor,
+        string $targetUuid,
+        string $targetName,
+        string $bucket,
+        int $amountMinor
+    ) : void{
+        $identity = $this->administratorIdentity($actor);
+        if($amountMinor < 0){
+            throw new BankException('A balance cannot be negative.');
+        }
+        $this->getAccount($targetUuid, $targetName);
+        $this->publish($this->repository->adjustBalance(
+            $identity['uuid'], $identity['name'], $targetUuid, $targetName, $bucket, 'set', $amountMinor,
+            $this->configuredAmount('limits.max-transaction', '1000000.00')
+        ));
+    }
+
+    /**
+     * @return array{uuid: string, name: string}
+     */
+    private function administratorIdentity(CommandSender $actor) : array{
+        if(!$actor->hasPermission('banksystem.admin')){
+            throw new BankException('Administrator permission banksystem.admin is required for balance changes.');
+        }
+
+        return [
+            'uuid' => $actor instanceof Player ? $actor->getUniqueId()->toString() : 'console',
+            'name' => $actor->getName()
+        ];
     }
 
     /**
