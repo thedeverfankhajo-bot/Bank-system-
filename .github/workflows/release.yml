@@ -1,0 +1,85 @@
+name: Publish PHAR release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag matching the version in plugin.yml (for example v1.0.2)'
+        required: true
+        type: string
+        default: 'v1.0.2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-phar-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Validate, package and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: '8.2'
+          extensions: sqlite3
+          tools: composer:v2
+          coverage: none
+
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="$(ruby -e 'require "yaml"; puts YAML.load_file("plugin.yml")["version"]')"
+          if [[ "$RELEASE_TAG" != "v$VERSION" ]]; then
+            echo "Release tag must be v$VERSION to match plugin.yml (received: $RELEASE_TAG)." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]] && git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Tag $RELEASE_TAG already exists. Push that tag to publish from its exact commit." >&2
+            exit 1
+          fi
+
+      - name: Validate Composer metadata
+        run: |
+          COMPOSER_ROOT_VERSION="$(ruby -e 'require "yaml"; puts YAML.load_file("plugin.yml")["version"]')"
+          export COMPOSER_ROOT_VERSION
+          composer validate --strict --no-check-publish --no-check-all
+
+      - name: Install development dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Audit dependencies
+        run: composer audit
+
+      - name: Run tests and lint
+        run: |
+          composer test
+          composer lint
+
+      - name: Build PHAR
+        run: php -d phar.readonly=0 tools/build-phar.php
+
+      - name: Verify archive and generate checksum
+        run: |
+          php -r '$p = new Phar("build/BankSystem.phar"); foreach (["plugin.yml", "src/BankSystem/Main.php", "resources/config.yml"] as $f) { if (!$p->offsetExists($f)) { fwrite(STDERR, "Missing archive entry: $f\\n"); exit(1); } } echo "Archive entries verified.\\n";'
+          (cd build && sha256sum BankSystem.phar > BankSystem.phar.sha256)
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
+        run: gh release create "$RELEASE_TAG" build/BankSystem.phar build/BankSystem.phar.sha256 --repo "$GITHUB_REPOSITORY" --title "$RELEASE_TAG" --generate-notes --target "$GITHUB_SHA"
