@@ -4,6 +4,8 @@
 
 > **دانلود آماده نصب:** [دریافت BankSystem.phar از آخرین انتشار](https://github.com/thedeverfankhajo-bot/Bank-system-/releases/latest/download/BankSystem.phar) · [همه انتشارها و فایل checksum](https://github.com/thedeverfankhajo-bot/Bank-system-/releases). لینک دانلود مستقیم زمانی کار می‌کند که آخرین انتشار شامل این فایل‌ها باشد.
 >
+> **نسخهٔ موقت تا انتشار Release اول:** [دانلود خروجی تأییدشدهٔ BankSystem-API5-PHAR](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/runs/40510787736). فایل ZIP شامل PHAR و checksum است و در **۱۰ نوامبر ۲۰۲۶** منقضی می‌شود.
+>
 > برای انتشار نسخه، مطمئن شو شمارهٔ نسخه در `plugin.yml` نهایی است و سپس تگ منطبق بساز و push کن (نسخهٔ فعلی `v1.0.2` است): `git tag v1.0.2` و بعد `git push origin v1.0.2`. [فرایند انتشار](https://github.com/thedeverfankhajo-bot/Bank-system-/actions/workflows/release.yml) فقط با تگ‌های `v*` اجرا می‌شود، تست‌ها و بررسی وابستگی‌ها را انجام می‌دهد، PHAR و SHA-256 می‌سازد و سپس هر دو فایل را منتشر می‌کند. اگر تگ از قبل وجود دارد، آن را force-push نکن؛ نسخهٔ `plugin.yml` را افزایش بده و تگ جدید بساز.
 
 برای نصب، فایل PHAR را در پوشه `plugins/` سرور قرار بده و سرور را مجدداً اجرا کن.
