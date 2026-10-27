@@ -11,6 +11,7 @@ use BankSystem\Event\BankTransactionEvent;
 use BankSystem\Main;
 use BankSystem\Support\Money;
 use pocketmine\command\CommandSender;
+use pocketmine\console\ConsoleCommandSender;
 use pocketmine\player\Player;
 use Throwable;
 
@@ -413,10 +414,11 @@ final class BankService{
             ];
         }
 
-        // Do not accept arbitrary classes implementing CommandSender: an integration
-        // could otherwise fabricate an object whose hasPermission() always returns true.
-        if($actor !== $this->plugin->getServer()->getConsoleSender()){
-            throw new BankException('Administrator identity must be a live player or the actual server console sender.');
+        // PocketMine-MP API 5 exposes the server reference from ConsoleCommandSender;
+        // Server::getConsoleSender() does not exist. Verify the sender class and that it
+        // belongs to this server before attributing an operation to the console.
+        if(!$actor instanceof ConsoleCommandSender || $actor->getServer() !== $this->plugin->getServer()){
+            throw new BankException('Administrator identity must be a live player or this server console sender.');
         }
 
         return ['uuid' => 'console', 'name' => $actor->getName()];
